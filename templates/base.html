@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="MigrateNow — Enterprise-grade data migration between ServiceNow and Salesforce with field mapping, batch operations, and real-time progress.">
+    <title>{% block title %}MigrateNow{% endblock %} — Enterprise Data Migration</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/MigrateNow_Favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block head %}{% endblock %}
+</head>
+
+<body>
+
+    {% set mt = session.get('migration_type', '') %}
+
+    <div class="app-shell">
+
+        <!-- ══════════════════════════════════════════════════════
+         SIDEBAR
+    ══════════════════════════════════════════════════════ -->
+        <nav class="sidebar" role="navigation" aria-label="Main navigation">
+
+            <!-- Logo — full-width, no separator -->
+            <a href="{{ url_for('home') }}" class="sidebar-logo" title="MigrateNow Home"
+                style="display:flex; align-items:center; justify-content:center; height:var(--header-h); padding:0 0.25rem; text-decoration:none; box-sizing:border-box;">
+                <img src="{{ url_for('static', filename='images/MigrateNow_Logo.png') }}" alt="MigrateNow"
+                    style="width:100%; max-width:225px; height:auto; object-fit:contain; display:block;">
+            </a>
+
+            <!-- Navigation -->
+            <div class="sidebar-nav">
+                <div class="sidebar-section-label">Workspace</div>
+
+                <a href="{{ url_for('home') }}"
+                    class="sidebar-item {% if request.endpoint == 'home' %}active{% endif %}" id="nav-dashboard">
+                    <svg class="sidebar-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="1.75">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" />
+                    </svg>
+                    <span class="sidebar-item__label">Dashboard</span>
+                </a>
+
+                <a href="{{ url_for('connect_page') }}"
+                    class="sidebar-item {% if request.endpoint in ['connect_page', 'connect'] %}active{% endif %}"
+                    id="nav-new-migration">
+                    <svg class="sidebar-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="1.75">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M12 9v6m3-3H9m12 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                    </svg>
+                    <span class="sidebar-item__label">New Migration</span>
+                </a>
+
+                <a href="{{ url_for('connections_page') }}"
+                    class="sidebar-item {% if request.endpoint in ['connections_page', 'connections_save', 'connections_delete'] %}active{% endif %}"
+                    id="nav-connections">
+                    <svg class="sidebar-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="1.75">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+                    </svg>
+                    <span class="sidebar-item__label">Connections</span>
+                </a>
+
+                <a href="{{ url_for('history') }}"
+                    class="sidebar-item {% if request.endpoint in ['history', 'history_detail'] %}active{% endif %}"
+                    id="nav-history">
+                    <svg class="sidebar-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="1.75">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M10 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                    </svg>
+                    <span class="sidebar-item__label">History</span>
+                </a>
+            </div>
+
+            <!-- Footer -->
+            <div class="sidebar-footer">
+                <div>Built for Enterprise</div>
+                <div class="sidebar-footer__version">v2.0 · MigrateNow</div>
+            </div>
+        </nav>
+
+        <!-- ══════════════════════════════════════════════════════
+         MAIN AREA
+    ══════════════════════════════════════════════════════ -->
+        <div class="main-area">
+
+            <!-- Page Header -->
+            <header class="page-header">
+                <div class="page-header__left">
+                    <div class="page-header__title">{% block page_title %}MigrateNow{% endblock %}</div>
+                    <div class="page-header__breadcrumb">
+                        <span>MigrateNow</span>
+                        <span class="page-header__breadcrumb-sep">›</span>
+                        {% block breadcrumb %}<span>Dashboard</span>{% endblock %}
+                    </div>
+                </div>
+                <div class="page-header__right">
+                    {% block header_actions %}{% endblock %}
+                </div>
+            </header>
+
+            <!-- Page Content -->
+            <main class="page-content" id="main-content">
+
+                <!-- Flash messages rendered as toasts -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                {% for category, message in messages %}
+                <div class="flash-data" data-category="{{ category }}" data-message="{{ message }}"
+                    style="display:none;"></div>
+                {% endfor %}
+                {% endif %}
+                {% endwith %}
+
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+
+    <!-- Toast container (populated by JS) -->
+    <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+
+</html>

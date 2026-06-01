@@ -1,0 +1,465 @@
+{% extends "base.html" %}
+{% set current_step = 0 %}
+
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block breadcrumb %}<span>Dashboard</span>{% endblock %}
+
+{% block head %}
+<style>
+/* Dashboard layout split */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+    margin-bottom: 1.25rem;
+}
+
+@media (max-width: 900px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Donut Chart styling */
+.chart-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem 1rem;
+    min-height: 260px;
+}
+
+.donut-chart {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    position: relative;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+    margin-bottom: 1.25rem;
+    animation: scaleIn 0.5s ease both;
+    background: conic-gradient(
+        var(--emerald) 0% var(--success-pct, 0%), 
+        var(--amber) var(--success-pct, 0%) var(--partial-pct, 0%), 
+        var(--rose) var(--partial-pct, 0%) 100%
+    );
+}
+
+.donut-chart__hole {
+    position: absolute;
+    inset: 30px;
+    background: #0b0f19; /* dark cosmic bg */
+    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.4);
+}
+
+.donut-chart__hole-value {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: var(--text-primary);
+}
+
+.donut-chart__hole-label {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Legend styling */
+.chart-legend {
+    display: flex;
+    justify-content: center;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    width: 100%;
+}
+
+.chart-legend__item {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+
+.chart-legend__dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+}
+
+/* Bar Chart styling */
+.bar-chart-outer {
+    padding: 1.5rem 1rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 260px;
+}
+
+.bar-chart-container {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-around;
+    height: 140px;
+    border-bottom: 1px solid var(--border-subtle);
+    margin-bottom: 0.75rem;
+    padding-bottom: 4px;
+}
+
+.bar-column {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+    height: 100%;
+    justify-content: flex-end;
+    position: relative;
+    max-width: 50px;
+}
+
+.bar-column__bar {
+    width: 22px;
+    border-radius: 4px 4px 0 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    cursor: pointer;
+    height: var(--bar-height, 4%);
+    animation-delay: var(--bar-delay, 0s);
+}
+
+.bar-column__bar--success {
+    background: var(--grad-brand);
+}
+
+.bar-column__bar--partial {
+    background: linear-gradient(to top, var(--amber), #fbbf24);
+}
+
+.bar-column__bar--failed {
+    background: linear-gradient(to top, var(--rose), #f87171);
+}
+
+.bar-column__bar:hover {
+    filter: brightness(1.2);
+    transform: scaleX(1.1);
+    box-shadow: 0 0 12px rgba(124, 58, 237, 0.5);
+}
+
+.bar-column__tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translate(-50%, -8px);
+    background: rgba(8, 12, 24, 0.95);
+    border: 1px solid var(--border-glass);
+    color: white;
+    padding: 0.35rem 0.55rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease;
+    z-index: 10;
+    pointer-events: none;
+    box-shadow: var(--shadow-md);
+}
+
+.bar-column__bar:hover .bar-column__tooltip {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, -4px);
+}
+
+.bar-column__label {
+    margin-top: 0.6rem;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    text-align: center;
+}
+</style>
+{% endblock %}
+
+{% block header_actions %}
+<a href="{{ url_for('connect_page') }}" class="btn btn-primary btn-sm" style="gap:0.4rem;">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
+    </svg>
+    Start Migration
+</a>
+<a href="{{ url_for('history') }}" class="btn btn-secondary btn-sm">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="width:14px;height:14px">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+    </svg>
+    History
+</a>
+{% endblock %}
+
+{% block content %}
+
+{# ── Compute stats from history ─────────────────────────── #}
+{% set total_migrations = history | length %}
+{% set total_records = namespace(val=0) %}
+{% set success_count = namespace(val=0) %}
+{% set partial_count = namespace(val=0) %}
+{% set failed_count  = namespace(val=0) %}
+
+{% for h in history %}
+    {% set total_records.val = total_records.val + (h.inserts | default(0)) + (h.updates | default(0)) %}
+    {% if h.status == 'success' %}
+        {% set success_count.val = success_count.val + 1 %}
+    {% elif h.status == 'partial' %}
+        {% set partial_count.val = partial_count.val + 1 %}
+    {% else %}
+        {% set failed_count.val = failed_count.val + 1 %}
+    {% endif %}
+{% endfor %}
+
+{% set success_rate = ((success_count.val / total_migrations * 100) | round | int) if total_migrations > 0 else 0 %}
+{% set last_ts = history[0].timestamp[:10] if history else '--' %}
+
+<!-- ── Stats Row ──────────────────────────────────────────── -->
+<div class="dashboard-stats" style="margin-bottom:1.25rem;">
+
+    <div class="stat-summary-card">
+        <div class="stat-summary-card__label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/>
+            </svg>
+            Total Migrations
+        </div>
+        <div class="stat-summary-card__value" data-count="{{ total_migrations }}">
+            {{ total_migrations }}
+        </div>
+        <div class="stat-summary-card__sub">All time runs</div>
+    </div>
+
+    <div class="stat-summary-card stat-summary-card--success">
+        <div class="stat-summary-card__label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 2.5c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/>
+            </svg>
+            Records Moved
+        </div>
+        <div class="stat-summary-card__value stat-summary-card__value--success" data-count="{{ total_records.val }}">
+            {{ total_records.val | default(0) }}
+        </div>
+        <div class="stat-summary-card__sub">Inserts + updates</div>
+    </div>
+
+    <div class="stat-summary-card stat-summary-card--cyan">
+        <div class="stat-summary-card__label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+            </svg>
+            Success Rate
+        </div>
+        <div class="stat-summary-card__value" data-count="{{ success_rate }}" data-suffix="%">
+            {{ success_rate }}%
+        </div>
+        <div class="stat-summary-card__sub">{{ success_count.val }} successful</div>
+    </div>
+
+    <div class="stat-summary-card stat-summary-card--amber">
+        <div class="stat-summary-card__label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+            </svg>
+            Last Migration
+        </div>
+        <div class="stat-summary-card__value" style="font-size:1.1rem; -webkit-text-fill-color: var(--amber); color:var(--amber); background:none;">
+            {{ last_ts }}
+        </div>
+        <div class="stat-summary-card__sub">Most recent run</div>
+    </div>
+
+</div>
+
+<!-- ── Charts and Visualizations Grid ── -->
+<div class="dashboard-grid">
+    
+    <!-- Status Distribution Donut Chart -->
+    <div class="card" style="margin-bottom:0;">
+        <div class="card__header">
+            <div class="card__header-left">
+                <div class="card__title">Status Distribution</div>
+                <div class="card__subtitle">Success rates and overall pipeline health</div>
+            </div>
+        </div>
+        <div class="chart-container">
+            {% if total_migrations > 0 %}
+                {% set success_pct = (success_count.val / total_migrations * 100) | round | int %}
+                {% set partial_pct = (partial_count.val / total_migrations * 100) | round | int %}
+                {% set failed_pct = 100 - success_pct - partial_pct %}
+                
+                <div class="donut-chart" style="--success-pct: {{ success_pct }}%; --partial-pct: {{ success_pct + partial_pct }}%;">
+                    <div class="donut-chart__hole">
+                        <span class="donut-chart__hole-value">{{ success_rate }}%</span>
+                        <span class="donut-chart__hole-label">Success</span>
+                    </div>
+                </div>
+                
+                <div class="chart-legend">
+                    <div class="chart-legend__item">
+                        <div class="chart-legend__dot" style="background:var(--emerald);"></div>
+                        <span>Success: {{ success_count.val }} ({{ success_pct }}%)</span>
+                    </div>
+                    <div class="chart-legend__item">
+                        <div class="chart-legend__dot" style="background:var(--amber);"></div>
+                        <span>Partial: {{ partial_count.val }} ({{ partial_pct }}%)</span>
+                    </div>
+                    <div class="chart-legend__item">
+                        <div class="chart-legend__dot" style="background:var(--rose);"></div>
+                        <span>Failed: {{ failed_count.val }} ({{ failed_pct }}%)</span>
+                    </div>
+                </div>
+            {% else %}
+                <div style="font-size:0.8rem; color:var(--text-muted); padding:3rem 0; text-align:center;">
+                    No migration history available to map status distributions.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Records Moved Bar Chart -->
+    <div class="card" style="margin-bottom:0;">
+        <div class="card__header">
+            <div class="card__header-left">
+                <div class="card__title">Volume Timelines</div>
+                <div class="card__subtitle">Data volumes transferred over the last 5 runs</div>
+            </div>
+        </div>
+        <div class="bar-chart-outer">
+            {% if total_migrations > 0 %}
+                {# Find max records for relative scale — minimum 1 to avoid division-by-zero #}
+                {% set max_recs = namespace(val=1) %}
+                {% for h in history[:5] %}
+                    {% set recs = (h.inserts | default(0)) + (h.updates | default(0)) %}
+                    {% if recs > max_recs.val %}{% set max_recs.val = recs %}{% endif %}
+                {% endfor %}
+
+                <div class="bar-chart-container">
+                    {% set bh = namespace(val=0) %}
+                    {% for h in history[:5]|reverse %}
+                        {% set current_recs = (h.inserts | default(0)) + (h.updates | default(0)) %}
+                        {% set bh.val = [(current_recs / max_recs.val * 100) | round | int, 4] | max %}
+
+                        <div class="bar-column">
+                            <div class="bar-column__bar bar-animate bar-column__bar--{{ h.status }}"
+                                 style="--bar-height: {{ bh.val }}%;
+                                        --bar-delay: {{ loop.index0 * 0.08 }}s;">
+                                <div class="bar-column__tooltip">
+                                    {{ current_recs | numberFormat }} records<br>
+                                    <span style="font-size:0.6rem;opacity:0.8;">{{ h.source_table or '' }} → {{ h.target_table or '' }}</span>
+                                </div>
+                            </div>
+                            <div class="bar-column__label">{{ (h.timestamp or '')[5:10] }}</div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <div style="font-size:0.7rem;color:var(--text-muted);display:flex;justify-content:space-between;padding:0 0.5rem;margin-top:0.25rem;">
+                    <span>← Oldest</span>
+                    <span style="font-family:'JetBrains Mono',monospace;">Max: {{ max_recs.val | numberFormat }} records</span>
+                    <span>Latest →</span>
+                </div>
+            {% else %}
+                <div style="font-size:0.8rem;color:var(--text-muted);padding:3.5rem 0;text-align:center;display:flex;flex-direction:column;align-items:center;gap:0.5rem;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:32px;height:32px;opacity:0.3;">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"/>
+                    </svg>
+                    No migration data yet. Run your first migration to see volumes.
+                </div>
+            {% endif %}
+        </div>
+    </div>{# end Volume Timelines card #}
+
+</div>{# end .dashboard-grid #}
+
+<!-- ── Recent Migrations ───────────────────────────────────── -->
+<div class="card" style="margin-bottom:0;">
+    <div class="card__header">
+        <div class="card__header-left">
+            <div class="card__title">Recent Operations</div>
+            <div class="card__subtitle">Last {{ [history|length, 5]|min }} of {{ total_migrations }} total</div>
+        </div>
+        {% if history %}
+        <a href="{{ url_for('history') }}" class="btn btn-secondary btn-sm" style="text-decoration:none;">View All History</a>
+        {% endif %}
+    </div>
+
+    {% if history %}
+    <div style="overflow-x:auto;">
+        <table class="recent-history-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Source → Target</th>
+                    <th style="text-align:right;">Records</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for h in history[:5] %}
+                <tr>
+                    <td style="white-space:nowrap; font-family:'JetBrains Mono',monospace; font-size:0.78rem;">
+                        {{ h.timestamp[:10] }}
+                    </td>
+                    <td>
+                        {% set mt_val = h.get('migration_type', 'sn_sn') if h.get('migration_type') else 'sn_sn' %}
+                        <span class="type-badge type-badge--{{ mt_val }}">
+                            {{ mt_val.replace('_', ' → ').upper() }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="instance-name">{{ (h.source_instance or '').replace('.service-now.com','').replace('.salesforce.com','') }}</span>
+                        <span style="color:var(--text-muted);"> / </span>
+                        <span class="table-name">{{ h.source_table or '' }}</span>
+                        <span style="color:var(--text-muted);"> → </span>
+                        <span class="instance-name">{{ (h.target_instance or '').replace('.service-now.com','').replace('.salesforce.com','') }}</span>
+                        <span style="color:var(--text-muted);"> / </span>
+                        <span class="table-name">{{ h.target_table or '' }}</span>
+                    </td>
+                    <td style="text-align:right; font-family:'JetBrains Mono',monospace; font-size:0.8rem; color:var(--emerald);">
+                        {{ ((h.inserts | default(0)) + (h.updates | default(0))) | default(0) }}
+                    </td>
+                    <td>
+                        <span class="status-badge status-badge--{{ h.status }}">
+                            {% if h.status == 'success' %}✓ Success
+                            {% elif h.status == 'partial' %}⚠ Partial
+                            {% else %}✗ Failed{% endif %}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-state__icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 0 0-1.883 2.542l.857 6a2.25 2.25 0 0 0 2.227 1.932H19.05a2.25 2.25 0 0 0 2.227-1.932l.857-6a2.25 2.25 0 0 0-1.883-2.542m-16.5 0V6A2.25 2.25 0 0 1 6 3.75h3.879a1.5 1.5 0 0 1 1.06.44l2.122 2.12a1.5 1.5 0 0 0 1.06.44H18A2.25 2.25 0 0 1 20.25 9v.776"/>
+            </svg>
+        </div>
+        <div class="empty-state__title">No operations executed yet</div>
+        <div class="empty-state__sub">Start a new migration profile to begin moving enterprise records.</div>
+        <a href="{{ url_for('connect_page') }}" class="btn btn-primary" style="margin-top:1rem;">Start Your First Migration</a>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}

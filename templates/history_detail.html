@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}Migration Details{% endblock %}
+{% block page_title %}Migration Details{% endblock %}
+{% block breadcrumb %}
+    <a href="{{ url_for('history') }}" style="color:var(--text-muted); text-decoration:none;">History</a>
+    <span class="page-header__breadcrumb-sep">›</span>
+    <span>Run #{{ index + 1 }}</span>
+{% endblock %}
+
+{% block header_actions %}
+<a href="{{ url_for('history') }}" class="btn btn-secondary btn-sm">← Back to History</a>
+{% endblock %}
+
+{% block content %}
+
+<div style="animation: fadeSlideIn 0.4s ease both;">
+
+    <!-- ── Status Header ── -->
+    <div class="history-detail-header">
+        <!-- Status card -->
+        <div class="card history-detail-result-card" style="margin-bottom:0; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+            {% if entry.status == 'success' %}
+                <div class="history-detail-result-card__icon" style="background:rgba(16,185,129,0.12); border:2px solid var(--emerald); color:var(--emerald);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:24px;height:24px;">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/>
+                    </svg>
+                </div>
+                <div class="history-detail-result-card__status" style="color:var(--emerald);">Successful Migration</div>
+                <div class="history-detail-result-card__sub">All records processed and transferred correctly.</div>
+            {% elif entry.status == 'partial' %}
+                <div class="history-detail-result-card__icon" style="background:rgba(245,158,11,0.12); border:2px solid var(--amber); color:var(--amber);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:24px;height:24px;">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/>
+                    </svg>
+                </div>
+                <div class="history-detail-result-card__status" style="color:var(--amber);">Partial Success</div>
+                <div class="history-detail-result-card__sub">Migration completed with some skips or partial failures.</div>
+            {% else %}
+                <div class="history-detail-result-card__icon" style="background:rgba(239,68,68,0.12); border:2px solid var(--rose); color:var(--rose);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:24px;height:24px;">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/>
+                    </svg>
+                </div>
+                <div class="history-detail-result-card__status" style="color:var(--rose);">Failed Migration</div>
+                <div class="history-detail-result-card__sub">The migration pipeline encountered a critical error.</div>
+            {% endif %}
+        </div>
+
+        <!-- Overview stats card -->
+        <div class="card" style="margin-bottom:0; display:flex; flex-direction:column; justify-content:space-between;">
+            <div>
+                <div class="card__title" style="font-size:0.88rem; margin-bottom:0.5rem;">Pipeline Specifications</div>
+                <div style="display:flex; flex-direction:column; gap:0.45rem;">
+                    <div style="display:flex; justify-content:space-between; font-size:0.78rem;">
+                        <span style="color:var(--text-muted);">Timestamp</span>
+                        <span style="color:var(--text-secondary); font-family:'JetBrains Mono',monospace;">{{ entry.timestamp }}</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-size:0.78rem;">
+                        <span style="color:var(--text-muted);">Migration Mode</span>
+                        {% if entry.migration_type == 'sn_sn' %}<span class="type-badge type-badge--sn_sn" style="font-size:0.65rem; padding:0.05rem 0.4rem;">ServiceNow → ServiceNow</span>
+                        {% elif entry.migration_type == 'sn_sf' %}<span class="type-badge type-badge--sn_sf" style="font-size:0.65rem; padding:0.05rem 0.4rem;">ServiceNow → Salesforce</span>
+                        {% elif entry.migration_type == 'sf_sf' %}<span class="type-badge type-badge--sf_sf" style="font-size:0.65rem; padding:0.05rem 0.4rem;">Salesforce → Salesforce</span>
+                        {% elif entry.migration_type == 'sf_sn' %}<span class="type-badge type-badge--sf_sn" style="font-size:0.65rem; padding:0.05rem 0.4rem;">Salesforce → ServiceNow</span>
+                        {% endif %}
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-size:0.78rem;">
+                        <span style="color:var(--text-muted);">Fetch Mode</span>
+                        <span style="color:var(--text-secondary); text-transform:uppercase; font-weight:600; font-size:0.72rem;">{{ entry.fetch_mode | default('auto') }}</span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; font-size:0.78rem;">
+                        <span style="color:var(--text-muted);">Pipeline Duration</span>
+                        <span style="color:var(--text-secondary); font-weight:600;">{{ entry.duration }}s</span>
+                    </div>
+                </div>
+            </div>
+            
+            {% if entry.error %}
+            <div style="margin-top:0.75rem; padding:0.5rem 0.75rem; background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.18); border-radius:var(--radius-sm); font-size:0.75rem; color:#fca5a5; font-family:'JetBrains Mono',monospace; max-height:80px; overflow-y:auto;">
+                <strong>Error:</strong> {{ entry.error }}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ── Instance Details Box ── -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; margin-bottom:1.25rem;">
+        <!-- Source -->
+        <div class="card" style="margin-bottom:0; position:relative; overflow:hidden;">
+            <div style="position:absolute; top:0; left:0; width:3px; height:100%; background:var(--cyan);"></div>
+            <div class="card__title" style="font-size:0.85rem; display:flex; align-items:center; gap:0.4rem;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--cyan);">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+                </svg>
+                Source Details
+            </div>
+            <div style="display:flex; flex-direction:column; gap:0.4rem; font-size:0.8rem; margin-top:0.6rem;">
+                <div>
+                    <span style="color:var(--text-muted);">Instance:</span>
+                    <span style="color:var(--text-secondary); font-family:'JetBrains Mono',monospace;">{{ entry.source_instance }}</span>
+                </div>
+                <div>
+                    <span style="color:var(--text-muted);">Table/Object:</span>
+                    <span style="color:var(--cyan); font-weight:700; font-family:'JetBrains Mono',monospace;">{{ entry.source_table }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Target -->
+        <div class="card" style="margin-bottom:0; position:relative; overflow:hidden;">
+            <div style="position:absolute; top:0; left:0; width:3px; height:100%; background:var(--emerald);"></div>
+            <div class="card__title" style="font-size:0.85rem; display:flex; align-items:center; gap:0.4rem;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--emerald);">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/>
+                </svg>
+                Target Details
+            </div>
+            <div style="display:flex; flex-direction:column; gap:0.4rem; font-size:0.8rem; margin-top:0.6rem;">
+                <div>
+                    <span style="color:var(--text-muted);">Instance:</span>
+                    <span style="color:var(--text-secondary); font-family:'JetBrains Mono',monospace;">{{ entry.target_instance }}</span>
+                </div>
+                <div>
+                    <span style="color:var(--text-muted);">Table/Object:</span>
+                    <span style="color:var(--emerald); font-weight:700; font-family:'JetBrains Mono',monospace;">{{ entry.target_table }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Move Stats ── -->
+    <div class="card">
+        <div class="card__title" style="font-size:0.88rem; margin-bottom:1rem;">Records Processing Summary</div>
+        <div class="results-grid" style="grid-template-columns: repeat(5, 1fr);">
+            <div class="stat-card" style="padding:1rem;">
+                <div class="stat-card__value" id="count_fetched" data-target="{{ entry.total_source_records or 0 }}">0</div>
+                <div class="stat-card__label">Fetched</div>
+            </div>
+            <div class="stat-card" style="padding:1rem;">
+                <div class="stat-card__value stat-card__value--success" id="count_inserted" data-target="{{ entry.inserts or 0 }}">0</div>
+                <div class="stat-card__label">Inserted</div>
+            </div>
+            <div class="stat-card" style="padding:1rem;">
+                <div class="stat-card__value stat-card__value--success" id="count_updated" data-target="{{ entry.updates or 0 }}">0</div>
+                <div class="stat-card__label">Updated</div>
+            </div>
+            <div class="stat-card" style="padding:1rem;">
+                <div class="stat-card__value stat-card__value--warn" id="count_skipped" data-target="{{ entry.skipped or 0 }}">0</div>
+                <div class="stat-card__label">Skipped</div>
+            </div>
+            <div class="stat-card" style="padding:1rem;">
+                <div class="stat-card__value stat-card__value--danger" id="count_failed" data-target="{{ entry.failed or 0 }}">0</div>
+                <div class="stat-card__label">Failed</div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // ── Smooth Count Up micro-animations ────────────────────
+    function countUpTo(el, target, duration) {
+        if (!el) return;
+        const start = Date.now();
+        function tick() {
+            const elapsed = Date.now() - start;
+            const progress = Math.min(elapsed / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3); // ease-out-cubic
+            el.textContent = Math.round(target * eased).toLocaleString();
+            if (progress < 1) requestAnimationFrame(tick);
+        }
+        requestAnimationFrame(tick);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => {
+            ['count_fetched', 'count_inserted', 'count_updated', 'count_skipped', 'count_failed'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    const target = parseInt(el.dataset.target) || 0;
+                    countUpTo(el, target, 1000);
+                }
+            });
+        }, 200);
+    });
+</script>
+{% endblock %}

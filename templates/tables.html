@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% set current_step = 2 %}
+
+{% block title %}Select Tables{% endblock %}
+{% block page_title %}Select Tables{% endblock %}
+{% block breadcrumb %}
+    <span>New Migration</span>
+    <span class="page-header__breadcrumb-sep">›</span>
+    <span>Step 2: Select Tables</span>
+{% endblock %}
+
+{% block header_actions %}
+<a href="{{ url_for('connect_page') }}" class="btn btn-secondary btn-sm">← Back</a>
+{% endblock %}
+
+{% block content %}
+
+{# ── Wizard Flow Bar ─────────────────────────────────────── #}
+<div class="wizard-flow-bar">
+    <div class="wizard-flow-step wizard-flow-step--done">
+        <div class="wizard-flow-step__num">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:12px;height:12px"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
+        </div>
+        <span class="wizard-flow-step__label">Connect</span>
+    </div>
+    <div class="wizard-flow-connector wizard-flow-connector--done"></div>
+    <div class="wizard-flow-step wizard-flow-step--active">
+        <div class="wizard-flow-step__num">2</div>
+        <span class="wizard-flow-step__label">Select Tables</span>
+    </div>
+    <div class="wizard-flow-connector"></div>
+    <div class="wizard-flow-step">
+        <div class="wizard-flow-step__num">3</div>
+        <span class="wizard-flow-step__label">Map Fields</span>
+    </div>
+    <div class="wizard-flow-connector"></div>
+    <div class="wizard-flow-step">
+        <div class="wizard-flow-step__num">4</div>
+        <span class="wizard-flow-step__label">Migrate</span>
+    </div>
+</div>
+{% set source_is_sf = migration_type in ['sf_sf', 'sf_sn'] %}
+{% set target_is_sf = migration_type in ['sn_sf', 'sf_sf'] %}
+{% set src_label = 'Object' if source_is_sf else 'Table' %}
+{% set tgt_label = 'Object' if target_is_sf else 'Table' %}
+
+<form method="POST" action="{{ url_for('select_tables') }}" id="tablesForm">
+    <div class="tables-panels">
+
+        <!-- ── Source Table/Object ─────────────────────────── -->
+        <div class="card" style="margin-bottom:0;">
+            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
+                <div style="width:22px;height:22px;border-radius:6px;background:rgba(124,58,237,0.15);border:1px solid rgba(124,58,237,0.25);display:flex;align-items:center;justify-content:center;color:#a78bfa;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 3.75H6.912a2.25 2.25 0 0 0-2.15 1.588L2.35 13.177a2.25 2.25 0 0 0-.1.661V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18v-4.162c0-.224-.034-.447-.1-.661L19.24 5.338a2.25 2.25 0 0 0-2.15-1.588H15M2.25 13.5h3.86a2.25 2.25 0 0 1 2.012 1.244l.256.512a2.25 2.25 0 0 0 2.013 1.244h3.218a2.25 2.25 0 0 0 2.013-1.244l.256-.512a2.25 2.25 0 0 1 2.013-1.244h3.859M12 3v8.25m0 0-3-3m3 3 3-3"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="card__title" style="font-size:0.9rem;">Source {{ src_label }}</div>
+                </div>
+            </div>
+            <div class="card__subtitle" style="margin-top:-0.75rem; margin-bottom:0.75rem;">
+                Search for the {{ src_label|lower }} to migrate data <strong>FROM</strong>
+            </div>
+
+            <div class="search-input-wrap" style="position:relative;">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
+                </svg>
+                <input type="text" class="form-input" id="sourceSearch"
+                       placeholder="{% if source_is_sf %}Search objects (Account, Contact…){% else %}Search tables (incident, task…){% endif %}"
+                       data-instance="source" data-select="source_table"
+                       data-search-type="{% if source_is_sf %}sf{% else %}sn{% endif %}"
+                       autocomplete="off" value="{{ selected_source }}">
+                <div class="search-dropdown" id="sourceDropdown"></div>
+            </div>
+
+            <!-- Selected chip display -->
+            <div id="sourceChipWrap" style="min-height:28px;">
+                {% if selected_source %}
+                <span class="selected-chip" id="sourceChip">
+                    {{ selected_source }}
+                    <button type="button" class="selected-chip__clear" onclick="clearSelection('source')" aria-label="Clear selection">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:12px;height:12px">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </span>
+                {% endif %}
+            </div>
+
+            <input type="hidden" id="source_table" name="source_table" value="{{ selected_source }}" required>
+        </div>
+
+        <!-- ── Connector ────────────────────────────────────── -->
+        <div class="tables-connector">
+            <div class="tables-connector__icon" title="Source → Target">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"/>
+                </svg>
+            </div>
+        </div>
+
+        <!-- ── Target Table/Object ─────────────────────────── -->
+        <div class="card" style="margin-bottom:0;">
+            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
+                <div style="width:22px;height:22px;border-radius:6px;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.25);display:flex;align-items:center;justify-content:center;color:#6ee7b7;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 2.5c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="card__title" style="font-size:0.9rem;">Target {{ tgt_label }}</div>
+                </div>
+            </div>
+            <div class="card__subtitle" style="margin-top:-0.75rem; margin-bottom:0.75rem;">
+                Search for the {{ tgt_label|lower }} to migrate data <strong>TO</strong>
+            </div>
+
+            <div class="search-input-wrap" style="position:relative;">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
+                </svg>
+                <input type="text" class="form-input" id="targetSearch"
+                       placeholder="{% if target_is_sf %}Search objects (Account, Contact…){% else %}Search tables (incident, task…){% endif %}"
+                       data-instance="target" data-select="target_table"
+                       data-search-type="{% if target_is_sf %}sf{% else %}sn{% endif %}"
+                       autocomplete="off" value="{{ selected_target }}">
+                <div class="search-dropdown" id="targetDropdown"></div>
+            </div>
+
+            <div id="targetChipWrap" style="min-height:28px;">
+                {% if selected_target %}
+                <span class="selected-chip" id="targetChip">
+                    {{ selected_target }}
+                    <button type="button" class="selected-chip__clear" onclick="clearSelection('target')" aria-label="Clear selection">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:12px;height:12px">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </span>
+                {% endif %}
+            </div>
+
+            <input type="hidden" id="target_table" name="target_table" value="{{ selected_target }}" required>
+        </div>
+
+    </div><!-- end .tables-panels -->
+
+    <div class="btn-row">
+        <a href="{{ url_for('connect_page') }}" class="btn btn-secondary">← Connect</a>
+        <button type="submit" class="btn btn-primary btn-lg" id="btnTables">
+            Map Fields
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"/>
+            </svg>
+        </button>
+    </div>
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Dropdown-based table/object search
+(function() {
+    function initSearch(inputId, dropdownId, hiddenId, chipWrapId, chipId) {
+        const input    = document.getElementById(inputId);
+        const dropdown = document.getElementById(dropdownId);
+        const hidden   = document.getElementById(hiddenId);
+        const chipWrap = document.getElementById(chipWrapId);
+
+        if (!input) return;
+
+        const instance   = input.dataset.instance;
+        const searchType = input.dataset.searchType || 'sn';
+        let timer = null;
+
+        function selectItem(name, label) {
+            hidden.value = name;
+            input.value  = name;
+            dropdown.classList.remove('open');
+
+            // Render chip
+            const chip = document.createElement('span');
+            chip.className = 'selected-chip';
+            chip.id = chipId;
+            chip.innerHTML = `
+                ${name}
+                <button type="button" class="selected-chip__clear" onclick="clearSelection('${instance}')" aria-label="Clear">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:12px;height:12px">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/>
+                    </svg>
+                </button>`;
+            chipWrap.innerHTML = '';
+            chipWrap.appendChild(chip);
+        }
+
+        function showLoading() {
+            dropdown.innerHTML = '<div class="search-dropdown__loading"><span class="spinner-sm" style="width:14px;height:14px;border-width:1.5px;"></span> Searching…</div>';
+            dropdown.classList.add('open');
+        }
+
+        function showEmpty(type) {
+            dropdown.innerHTML = `<div class="search-dropdown__empty">No ${type === 'sf' ? 'objects' : 'tables'} found</div>`;
+            dropdown.classList.add('open');
+        }
+
+        function renderResults(items, q) {
+            if (!items || items.length === 0) {
+                showEmpty(searchType);
+                return;
+            }
+            const lowerQ = q.toLowerCase();
+            items.sort((a, b) => {
+                const aEx = a.name.toLowerCase() === lowerQ ? 0 : 1;
+                const bEx = b.name.toLowerCase() === lowerQ ? 0 : 1;
+                if (aEx !== bEx) return aEx - bEx;
+                return a.name.localeCompare(b.name);
+            });
+            dropdown.innerHTML = items.map(t => {
+                const labelHtml = t.label && t.label !== t.name
+                    ? `<span class="search-dropdown__item-label">${t.label}</span>` : '';
+                return `<div class="search-dropdown__item" data-name="${t.name}" tabindex="0">
+                    <span>${t.name}</span>${labelHtml}
+                </div>`;
+            }).join('');
+            dropdown.classList.add('open');
+
+            dropdown.querySelectorAll('.search-dropdown__item').forEach(el => {
+                el.addEventListener('click', () => {
+                    const name = el.dataset.name;
+                    const lbl  = el.querySelector('.search-dropdown__item-label')?.textContent || '';
+                    selectItem(name, lbl);
+                });
+                el.addEventListener('keydown', e => {
+                    if (e.key === 'Enter') {
+                        selectItem(el.dataset.name, '');
+                    }
+                });
+            });
+
+            // Auto-select exact match
+            const exact = items.find(t => t.name.toLowerCase() === lowerQ);
+            if (exact) selectItem(exact.name, exact.label || '');
+        }
+
+        input.addEventListener('input', () => {
+            clearTimeout(timer);
+            const q = input.value.trim();
+            if (q.length < 2) {
+                dropdown.classList.remove('open');
+                return;
+            }
+            showLoading();
+            timer = setTimeout(() => {
+                const apiUrl = searchType === 'sf'
+                    ? `/api/search_objects?q=${encodeURIComponent(q)}&instance=${instance}`
+                    : `/api/search_tables?q=${encodeURIComponent(q)}&instance=${instance}`;
+
+                fetch(apiUrl)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.error) {
+                            dropdown.innerHTML = `<div class="search-dropdown__empty">Error: ${data.error}</div>`;
+                            return;
+                        }
+                        renderResults(data, q);
+                    })
+                    .catch(() => {
+                        dropdown.innerHTML = '<div class="search-dropdown__empty">Search failed — check connection</div>';
+                    });
+            }, 350);
+        });
+
+        // Close dropdown on outside click
+        document.addEventListener('click', e => {
+            if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+                dropdown.classList.remove('open');
+            }
+        });
+    }
+
+    initSearch('sourceSearch', 'sourceDropdown', 'source_table', 'sourceChipWrap', 'sourceChip');
+    initSearch('targetSearch', 'targetDropdown', 'target_table', 'targetChipWrap', 'targetChip');
+})();
+
+function clearSelection(instance) {
+    const search = document.getElementById(instance + 'Search');
+    const hidden = document.getElementById(instance + '_table');
+    const chipWrap = document.getElementById(instance + 'ChipWrap');
+    if (search)  search.value  = '';
+    if (hidden)  hidden.value  = '';
+    if (chipWrap) chipWrap.innerHTML = '';
+}
+</script>
+{% endblock %}

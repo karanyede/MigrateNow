@@ -1,0 +1,396 @@
+{% extends "base.html" %}
+{% set current_step = 3 %}
+
+{% block title %}Field Mapping{% endblock %}
+{% block page_title %}Field Mapping{% endblock %}
+{% block breadcrumb %}
+    <span>New Migration</span>
+    <span class="page-header__breadcrumb-sep">›</span>
+    <span>Step 3: Map Fields</span>
+{% endblock %}
+
+{% block header_actions %}
+<a href="{{ url_for('tables') }}" class="btn btn-secondary btn-sm">← Tables</a>
+{% endblock %}
+
+{% block head %}
+<style>
+.spinner-sm {
+    width: 16px; height: 16px;
+    border: 1.5px solid rgba(255,255,255,0.1);
+    border-top-color: var(--cyan);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+    display: inline-block;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+{# ── Wizard Flow Bar ─────────────────────────────────────── #}
+<div class="wizard-flow-bar">
+    <div class="wizard-flow-step wizard-flow-step--done">
+        <div class="wizard-flow-step__num"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:12px;height:12px"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg></div>
+        <span class="wizard-flow-step__label">Connect</span>
+    </div>
+    <div class="wizard-flow-connector wizard-flow-connector--done"></div>
+    <div class="wizard-flow-step wizard-flow-step--done">
+        <div class="wizard-flow-step__num"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:12px;height:12px"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg></div>
+        <span class="wizard-flow-step__label">Select Tables</span>
+    </div>
+    <div class="wizard-flow-connector wizard-flow-connector--done"></div>
+    <div class="wizard-flow-step wizard-flow-step--active">
+        <div class="wizard-flow-step__num">3</div>
+        <span class="wizard-flow-step__label">Map Fields</span>
+    </div>
+    <div class="wizard-flow-connector"></div>
+    <div class="wizard-flow-step">
+        <div class="wizard-flow-step__num">4</div>
+        <span class="wizard-flow-step__label">Migrate</span>
+    </div>
+</div>
+
+<form method="POST" action="{{ url_for('map_fields') }}" id="fieldsForm">
+    <input type="hidden" name="source_table" value="{{ source_table }}">
+    <input type="hidden" name="target_table" value="{{ target_table }}">
+
+    <!-- ── Field Mapping Table Card ──────────────────────── -->
+    <div class="card">
+        <div class="card__header">
+            <div class="card__header-left">
+                <div class="card__title">Field Mapping</div>
+                <div class="card__subtitle">
+                    Map columns from
+                    <strong style="color:var(--cyan)">{{ source_table }}</strong>
+                    →
+                    <strong style="color:var(--emerald)">{{ target_table }}</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats row -->
+        <div class="mapping-stats">
+            <div class="mapping-stats__item">
+                <span class="mapping-badge mapping-badge--auto" id="badgeAuto">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:10px;height:10px">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/>
+                    </svg>
+                    <span id="autoCountLabel">{{ auto_count }}</span> auto-matched
+                </span>
+            </div>
+            <div class="mapping-stats__item">
+                <span class="mapping-badge mapping-badge--manual" id="badgeManual">
+                    <span id="manualCountLabel">{{ manual_count }}</span> need mapping
+                </span>
+            </div>
+            <div class="mapping-stats__item" style="margin-left:auto;">
+                <span style="font-size:0.75rem; color:var(--text-muted);">{{ source_fields|length }} total fields</span>
+            </div>
+        </div>
+
+        <!-- Field toolbar -->
+        <div class="field-toolbar">
+            <div class="search-input-wrap" style="margin-bottom:0;">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
+                </svg>
+                <input type="text" class="form-input" id="fieldFilter" placeholder="Filter fields by name…" autocomplete="off">
+            </div>
+            <button type="button" class="toggle-btn" id="unmappedToggle">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="width:13px;height:13px">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/>
+                </svg>
+                Unmapped only
+            </button>
+            <button type="button" class="toggle-btn" id="selectAllBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="width:13px;height:13px">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+                </svg>
+                Select auto-matched
+            </button>
+        </div>
+
+        <!-- Mapping Table -->
+        <div style="overflow-x:auto; max-height:420px; overflow-y:auto; border-radius:var(--radius-sm); border:1px solid var(--border-subtle);">
+            <table class="mapping-table" id="mappingTable">
+                <thead>
+                    <tr>
+                        <th style="width:48px; text-align:center;">Include</th>
+                        <th>Source Field</th>
+                        <th>Target Field</th>
+                        <th style="width:100px;">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sf in source_fields %}
+                    <tr data-source-field="{{ sf.name }}" data-auto="{{ 'true' if sf.name in auto_map else 'false' }}">
+                        <!-- Include checkbox -->
+                        <td style="text-align:center;">
+                            <input type="checkbox"
+                                   name="include_{{ sf.name }}"
+                                   value="1"
+                                   {% if sf.name in auto_map %}checked{% endif %}
+                                   class="field-include-cb"
+                                   id="cb_{{ sf.name }}">
+                        </td>
+                        <!-- Source field -->
+                        <td>
+                            <span class="field-name">{{ sf.name }}</span>
+                            {% if sf.label and sf.label != sf.name %}
+                            <br><span class="field-label">{{ sf.label }}</span>
+                            {% endif %}
+                            {% if sf.reference %}
+                            <br><span style="color:var(--amber);font-size:0.7rem; font-family:'JetBrains Mono',monospace;">↗ {{ sf.reference }}</span>
+                            {% endif %}
+                        </td>
+                        <!-- Target dropdown -->
+                        <td>
+                            <select class="form-select mapping-select"
+                                    name="map_{{ sf.name }}"
+                                    id="map_{{ sf.name }}">
+                                <option value="">— skip —</option>
+                                {% for tf in target_fields %}
+                                <option value="{{ tf.name }}"
+                                        {% if auto_map.get(sf.name) == tf.name %}selected{% endif %}>
+                                    {{ tf.name }}{% if tf.label and tf.label != tf.name %} ({{ tf.label }}){% endif %}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <!-- Status badge -->
+                        <td>
+                            {% if sf.name in auto_map %}
+                            <span class="mapping-badge mapping-badge--auto">Auto</span>
+                            {% else %}
+                            <span class="mapping-badge mapping-badge--unmapped">Unmapped</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ── Deduplication Settings ────────────────────────────── -->
+    {% set target_is_sf = migration_type in ['sn_sf', 'sf_sf'] %}
+    {% set target_is_sn = migration_type in ['sn_sn', 'sf_sn'] %}
+
+    <div class="card" id="coalesceCard">
+        <div class="card__title" style="margin-bottom:0.2rem;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="width:16px;height:16px;display:inline;vertical-align:middle;margin-right:0.4rem;color:var(--cyan);">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"/>
+            </svg>
+            Deduplication Settings
+        </div>
+        <div class="card__subtitle">
+            {% if target_is_sn %}
+            Prevent duplicate records by mapping the source <code style="font-family:'JetBrains Mono',monospace;color:var(--cyan);font-size:0.8rem;">sys_id</code> to a legacy sysid field on the target table.
+            {% else %}
+            Prevent duplicates using a Salesforce External ID field (<code style="font-family:'JetBrains Mono',monospace;color:var(--cyan);font-size:0.8rem;">SN_Legacy_Id__c</code>) on the target object.
+            {% endif %}
+        </div>
+
+        <div id="coalesceStatus">
+            <div class="coalesce-status-row">
+                <span class="spinner-sm" id="coalesceSpinner"></span>
+                <span id="coalesceMsg" style="color:var(--text-secondary)">
+                    Checking target {% if target_is_sn %}table{% else %}object{% endif %} for dedup field…
+                </span>
+            </div>
+        </div>
+
+        <div id="coalesceActions" style="margin-top:0.75rem; display:none;"></div>
+        <input type="hidden" name="coalesce_field" id="coalesceFieldInput" value="">
+    </div>
+
+    <input type="hidden" name="fetch_mode" value="auto">
+
+    <div class="btn-row">
+        <a href="{{ url_for('tables') }}" class="btn btn-secondary">← Tables</a>
+        <button type="submit" class="btn btn-success btn-lg" id="btnMigrate">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z"/>
+            </svg>
+            Start Migration
+        </button>
+    </div>
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    // ── Unmapped-only toggle ──────────────────────────────
+    const unmappedBtn = document.getElementById('unmappedToggle');
+    const rows = document.querySelectorAll('#mappingTable tbody tr');
+    let showUnmappedOnly = false;
+
+    function applyFilters() {
+        const q = (document.getElementById('fieldFilter')?.value || '').toLowerCase().trim();
+        rows.forEach(row => {
+            const name    = row.dataset.sourceField || '';
+            const label   = row.querySelector('.field-label')?.textContent || '';
+            const isAuto  = row.dataset.auto === 'true';
+            const matchQ  = !q || name.toLowerCase().includes(q) || label.toLowerCase().includes(q);
+            const matchUm = !showUnmappedOnly || !isAuto;
+            row.style.display = (matchQ && matchUm) ? '' : 'none';
+        });
+    }
+
+    unmappedBtn?.addEventListener('click', () => {
+        showUnmappedOnly = !showUnmappedOnly;
+        unmappedBtn.classList.toggle('active', showUnmappedOnly);
+        applyFilters();
+    });
+
+    document.getElementById('fieldFilter')?.addEventListener('input', applyFilters);
+
+    // ── Select all auto-matched ───────────────────────────
+    document.getElementById('selectAllBtn')?.addEventListener('click', () => {
+        rows.forEach(row => {
+            if (row.dataset.auto === 'true') {
+                const cb = row.querySelector('.field-include-cb');
+                if (cb) cb.checked = true;
+            }
+        });
+    });
+
+    // ── Auto-check include when mapping changes ───────────
+    document.querySelectorAll('.mapping-select').forEach(sel => {
+        sel.addEventListener('change', () => {
+            const row   = sel.closest('tr');
+            const cb    = row.querySelector('.field-include-cb');
+            const badge = row.querySelector('.mapping-badge');
+            if (sel.value) {
+                if (cb) cb.checked = true;
+                if (badge) {
+                    badge.className = 'mapping-badge mapping-badge--manual';
+                    badge.textContent = 'Manual';
+                }
+                row.dataset.auto = 'false';
+            } else {
+                if (badge) {
+                    badge.className = 'mapping-badge mapping-badge--unmapped';
+                    badge.textContent = 'Unmapped';
+                }
+            }
+        });
+    });
+
+    // ── Coalesce check ────────────────────────────────────
+    const targetTable  = '{{ target_table }}';
+    const migrationType = '{{ migration_type }}';
+    const spinner      = document.getElementById('coalesceSpinner');
+    const msgEl        = document.getElementById('coalesceMsg');
+    const actionsEl    = document.getElementById('coalesceActions');
+    const hiddenInput  = document.getElementById('coalesceFieldInput');
+
+    function applyCoalesceMapping(fieldName) {
+        const cb = document.querySelector('input[name="include_sys_id"]');
+        if (cb && !cb.checked) cb.checked = true;
+        const sel = document.getElementById('map_sys_id');
+        if (sel) {
+            let optExists = false;
+            for (const o of sel.options) {
+                if (o.value === fieldName) { optExists = true; break; }
+            }
+            if (!optExists) {
+                const opt = document.createElement('option');
+                opt.value = fieldName;
+                opt.textContent = fieldName;
+                sel.appendChild(opt);
+            }
+            sel.value = fieldName;
+        }
+        hiddenInput.value = fieldName;
+    }
+
+    function showCoalesceFound(fieldName) {
+        spinner.style.display = 'none';
+        msgEl.className = 'coalesce-found';
+        msgEl.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px;display:inline;vertical-align:middle;margin-right:0.3rem;"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg> Dedup field (<strong>${fieldName}</strong>) found on target`;
+        applyCoalesceMapping(fieldName);
+    }
+
+    function showCoalesceMissing() {
+        spinner.style.display = 'none';
+        msgEl.className = 'coalesce-missing';
+        msgEl.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;display:inline;vertical-align:middle;margin-right:0.3rem;"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg> No dedup field found on target`;
+        actionsEl.style.display = 'block';
+        actionsEl.innerHTML = '';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-primary btn-sm';
+        btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg> Create u_legacy_sysid field`;
+        btn.addEventListener('click', createCoalesceField);
+        actionsEl.appendChild(btn);
+    }
+
+    function showExternalIdFound(fieldName) {
+        spinner.style.display = 'none';
+        msgEl.className = 'coalesce-found';
+        msgEl.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px;display:inline;vertical-align:middle;margin-right:0.3rem;"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg> External ID field (<strong>${fieldName}</strong>) found on target`;
+    }
+
+    function showExternalIdMissing() {
+        spinner.style.display = 'none';
+        msgEl.className = 'coalesce-missing';
+        msgEl.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;display:inline;vertical-align:middle;margin-right:0.3rem;"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg> SN_Legacy_Id__c External ID field not found — create it in Salesforce Setup`;
+    }
+
+    function createCoalesceField() {
+        actionsEl.innerHTML = '';
+        spinner.style.display = '';
+        msgEl.className = '';
+        msgEl.style.color = 'var(--text-secondary)';
+        msgEl.textContent = 'Creating u_legacy_sysid field…';
+
+        fetch('/api/create_coalesce', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ table: targetTable })
+        })
+        .then(r => r.json())
+        .then(() => {
+            spinner.style.display = 'none';
+            msgEl.className = 'coalesce-created';
+            msgEl.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px;display:inline;vertical-align:middle;margin-right:0.3rem;"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg> Created u_legacy_sysid field`;
+            applyCoalesceMapping('u_legacy_sysid');
+        })
+        .catch(err => {
+            spinner.style.display = 'none';
+            msgEl.className = 'coalesce-missing';
+            msgEl.textContent = 'Failed to create field — ' + err.message;
+        });
+    }
+
+    const targetIsSF = ['sn_sf', 'sf_sf'].includes(migrationType);
+    const targetIsSN = ['sn_sn', 'sf_sn'].includes(migrationType);
+
+    if (targetIsSN) {
+        fetch('/api/check_coalesce?table=' + encodeURIComponent(targetTable))
+            .then(r => r.json())
+            .then(data => data.exists ? showCoalesceFound(data.field_name || 'u_legacy_sysid') : showCoalesceMissing())
+            .catch(err => {
+                spinner.style.display = 'none';
+                msgEl.textContent = 'Could not check — ' + err.message;
+            });
+    } else if (targetIsSF) {
+        fetch('/api/check_external_id?object=' + encodeURIComponent(targetTable))
+            .then(r => r.json())
+            .then(data => data.exists ? showExternalIdFound(data.field_name) : showExternalIdMissing())
+            .catch(err => {
+                spinner.style.display = 'none';
+                msgEl.textContent = 'Could not check — ' + err.message;
+            });
+    } else {
+        spinner.style.display = 'none';
+        msgEl.textContent = 'No dedup configuration required for this migration type.';
+    }
+})();
+</script>
+{% endblock %}
