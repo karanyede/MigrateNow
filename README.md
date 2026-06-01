@@ -22,21 +22,21 @@ MigrateNow is a powerful, lightweight, and visual migration workbench designed t
 
 ```mermaid
 flowchart TD
-    User([Operator]) ➡️ UI[Flask Web Interface]
-    UI ➡️ Session[Session & Wizard State]
-    Session ➡️ Mapping[Field Mapping & Dedup Engine]
-    Mapping ➡️ Orchestrator[Migration Orchestrator]
+    User([Operator]) --> UI[Flask Web Interface]
+    UI --> Session[Session & Wizard State]
+    Session --> Mapping[Field Mapping & Dedup Engine]
+    Mapping --> Orchestrator[Migration Orchestrator]
     
     subgraph "Fetch & Diff Pipeline"
-        Orchestrator ➡️ Fetcher[Data Fetchers]
-        Fetcher ➡️ ServiceNowCSV[ServiceNow CSV Streamer]
-        Fetcher ➡️ SFBulk[Salesforce Bulk API 2.0]
-        Orchestrator ➡️ Diff[Diff Engine]
+        Orchestrator --> Fetcher[Data Fetchers]
+        Fetcher --> ServiceNowCSV[ServiceNow CSV Streamer]
+        Fetcher --> SFBulk[Salesforce Bulk API 2.0]
+        Orchestrator --> Diff[Diff Engine]
     end
     
     subgraph "Load & Logging"
-        Orchestrator ➡️ Loaders[Data Loaders]
-        Orchestrator ➡️ Logs[Failed Records & History]
+        Orchestrator --> Loaders[Data Loaders]
+        Orchestrator --> Logs[Failed Records & History]
     end
 ```
 
