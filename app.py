@@ -85,9 +85,14 @@ def number_format(value):
 # is sufficient.
 _progress_q: queue.Queue = queue.Queue()
 
+# Thread-safe event to pause/resume migrations.
+_pause_event = threading.Event()
+_pause_event.set()
+
 # Data file paths
-HISTORY_FILE     = Path(__file__).parent / "data" / "migration_history.json"
-CONNECTIONS_FILE = Path(__file__).parent / "data" / "connections.json"
+HISTORY_FILE      = Path(__file__).parent / "data" / "migration_history.json"
+CONNECTIONS_FILE  = Path(__file__).parent / "data" / "connections.json"
+CONFIGS_FILE      = Path(__file__).parent / "data" / "migration_configs.json"
 
 
 def _load_history() -> list[dict]:
@@ -114,6 +119,165 @@ def _append_history(entry: dict) -> None:
     history = _load_history()
     history.insert(0, entry)  # newest first
     _save_history(history)
+
+
+# ── Migration configs persistence ───────────────────────────────────
+
+def _load_configs() -> list[dict]:
+    """Load saved migration configurations from JSON file."""
+    if CONFIGS_FILE.exists():
+        try:
+            return json.loads(CONFIGS_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return []
+    return []
+
+
+def _save_configs(configs: list[dict]) -> None:
+    """Save migration configurations to JSON file."""
+    CONFIGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CONFIGS_FILE.write_text(
+        json.dumps(configs, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
+def _seed_configs_from_history() -> None:
+    """Seed migration_configs.json from history if the file doesn't yet exist.
+
+    This handles the case where migrations were done before the config-save
+    feature was introduced (or before the toUpperCase Python bug was fixed).
+    We build deduplicated config entries from existing history records so that
+    users see their Recent Transactions immediately without a new migration.
+    """
+    if CONFIGS_FILE.exists():
+        return  # already seeded / already has data
+
+    history = _load_history()
+    if not history:
+        return
+
+    configs: list[dict] = []
+    seen: set[str] = set()
+
+    for entry in history:
+        mt = entry.get("migration_type", "sn_sn")
+        st = entry.get("source_table", "")
+        tt = entry.get("target_table", "")
+        si = entry.get("source_instance", "")
+        ti = entry.get("target_instance", "")
+        sf_su = entry.get("sf_source_username", "")
+        sf_tu = entry.get("sf_target_username", "")
+
+        dedup_key = f"{mt}|{st}|{tt}|{si or sf_su}|{ti or sf_tu}"
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
+
+        import uuid as _uuid
+        config_id = _uuid.uuid4().hex[:8]
+        cfg = {
+            "id": config_id,
+            "name": f"{st} \u2794 {tt}",
+            "migration_type": mt,
+            "source_table": st,
+            "target_table": tt,
+            "field_mapping": {},   # not stored in history; will be remapped on repeat
+            "filter_conditions": [],
+            "fetch_mode": entry.get("fetch_mode", "auto"),
+            "created_at": entry.get("timestamp", ""),
+            "last_run_at": entry.get("timestamp", ""),
+        }
+        if "sn" in mt.split("_")[0]:   # source is SN
+            cfg["source_instance"] = si
+        else:
+            cfg["sf_source_username"] = sf_su
+        if "sn" in mt.split("_")[1]:   # target is SN
+            cfg["target_instance"] = ti
+        else:
+            cfg["sf_target_username"] = sf_tu
+
+        configs.append(cfg)
+        if len(configs) >= 15:
+            break
+
+    if configs:
+        _save_configs(configs)
+        logger.info("Seeded %d migration config(s) from history.", len(configs))
+
+
+def _save_migration_config_from_session() -> str:
+    """Save current migration parameters from session into the configs list."""
+    configs = _load_configs()
+    
+    mt = session.get("migration_type", "sn_sn")
+    source_is_sn = mt in ("sn_sn", "sn_sf")
+    target_is_sn = mt in ("sn_sn", "sf_sn")
+    
+    source_table = session.get("source_table", "")
+    target_table = session.get("target_table", "")
+    field_mapping = session.get("field_mapping", {})
+    filter_conditions = session.get("filter_conditions", [])
+    fetch_mode = session.get("fetch_mode", "auto")
+
+    # Generate a descriptive name
+    name = f"{source_table} \u2794 {target_table} ({mt.replace('_', '\u2794').upper()})"
+
+    # Look for duplicate config
+    existing = None
+    for c in configs:
+        if (c.get("migration_type") == mt and
+            c.get("source_table") == source_table and
+            c.get("target_table") == target_table and
+            c.get("field_mapping") == field_mapping and
+            c.get("filter_conditions") == filter_conditions and
+            c.get("fetch_mode") == fetch_mode):
+            
+            if source_is_sn and c.get("source_instance") != session.get("source_instance"):
+                continue
+            if target_is_sn and c.get("target_instance") != session.get("target_instance"):
+                continue
+            existing = c
+            break
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if existing:
+        existing["last_run_at"] = now_iso
+        existing["name"] = name
+        config_id = existing["id"]
+    else:
+        import uuid
+        config_id = uuid.uuid4().hex[:8]
+        new_config = {
+            "id": config_id,
+            "name": name,
+            "migration_type": mt,
+            "source_table": source_table,
+            "target_table": target_table,
+            "field_mapping": field_mapping,
+            "filter_conditions": filter_conditions,
+            "fetch_mode": fetch_mode,
+            "created_at": now_iso,
+            "last_run_at": now_iso
+        }
+        
+        if source_is_sn:
+            new_config["source_instance"] = session.get("source_instance")
+        else:
+            new_config["sf_source_username"] = session.get("sf_source_username")
+            new_config["sf_source_login_url"] = session.get("sf_source_login_url")
+        
+        if target_is_sn:
+            new_config["target_instance"] = session.get("target_instance")
+        else:
+            new_config["sf_target_username"] = session.get("sf_target_username")
+            new_config["sf_target_login_url"] = session.get("sf_target_login_url")
+
+        configs.insert(0, new_config)
+
+    # Keep only top 15 configs
+    _save_configs(configs[:15])
+    return config_id
 
 
 # ── Connections persistence ──────────────────────────────────────────
@@ -236,6 +400,7 @@ def connect_page():
         "index.html",
         migration_type=mt,
         saved_connections=_load_connections(),
+        recent_configs=_load_configs()[:5],
         # SN credentials
         source_instance=session.get("source_instance", ""),
         source_username=session.get("source_username", ""),
@@ -265,6 +430,15 @@ def connect():
     
     mt = f"{source_platform}_{target_platform}"
     session["migration_type"] = mt
+
+    # Clear any previous migration configurations from session to start fresh
+    session.pop("source_table", None)
+    session.pop("target_table", None)
+    session.pop("field_mapping", None)
+    session.pop("filter_conditions", None)
+    session.pop("_source_fields", None)
+    session.pop("_target_fields", None)
+    session.pop("fetch_mode", None)
 
     source_is_sn = source_platform == "sn"
     source_is_sf = source_platform == "sf"
@@ -561,7 +735,9 @@ def fields():
         auto_map=auto_map,
         auto_count=len(auto_map),
         manual_count=manual_count,
+        filter_conditions=session.get("filter_conditions", []),
     )
+
 
 
 @app.route("/fields", methods=["POST"])
@@ -586,17 +762,77 @@ def map_fields():
     # Store the fetch mode selection from the UI
     session["fetch_mode"] = request.form.get("fetch_mode", "auto")
 
+    # Read and store filter conditions
+    filter_conditions = request.form.get("filter_conditions", "[]")
+    try:
+        session["filter_conditions"] = json.loads(filter_conditions)
+    except Exception:
+        session["filter_conditions"] = []
+
+    # Auto-save migration config!
+    _save_migration_config_from_session()
+
     logger.info(
-        "Field mapping: %s | Fetch mode: %s",
+        "Field mapping: %s | Fetch mode: %s | Filters: %s",
         field_mapping,
         session["fetch_mode"],
+        session["filter_conditions"],
     )
     return redirect(url_for("migrate"))
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Coalesce / Dedup APIs
-# ─────────────────────────────────────────────────────────────────────
+@app.route("/api/autocomplete_values")
+def api_autocomplete_values():
+    """Fetch unique field values from source for auto-complete filter suggestions."""
+    field = request.args.get("field", "").strip()
+    q = request.args.get("q", "").strip()
+    if not field:
+        return jsonify([])
+
+    mt = session.get("migration_type", "sn_sn")
+    source_is_sn = mt in ("sn_sn", "sn_sf")
+    
+    source_table = session.get("source_table", "")
+    if not source_table:
+        return jsonify([])
+
+    try:
+        values = []
+        if source_is_sn:
+            client = _build_client("source")
+            # Build query like: fieldLIKEq
+            query = f"{field}LIKE{q}" if q else ""
+            # Limit to 100 to avoid performance bottlenecks
+            records = client.fetch_page(
+                table_name=source_table,
+                limit=100,
+                fields=[field],
+                extra_query=query,
+            )
+            seen = set()
+            for r in records:
+                val = r.get(field)
+                if val is not None and val != "":
+                    seen.add(str(val))
+            values = sorted(list(seen))[:20]
+        else:
+            client = _build_sf_client("source")
+            # Query SF with a SOQL filter
+            where_clause = f" WHERE {field} LIKE '%{q}%'" if q else ""
+            soql = f"SELECT {field} FROM {source_table}{where_clause} LIMIT 100"
+            records = client.query(soql)
+            seen = set()
+            for r in records:
+                val = r.get(field)
+                if val is not None and val != "":
+                    seen.add(str(val))
+            values = sorted(list(seen))[:20]
+        return jsonify(values)
+    except Exception as e:
+        logger.error("Error fetching autocomplete values: %s", e)
+        return jsonify([])
+
 
 @app.route("/api/check_coalesce")
 def api_check_coalesce():
@@ -841,6 +1077,120 @@ def connections_edit(conn_id: str):
     return redirect(url_for("connections_page"))
 
 
+@app.route("/migrate/repeat/<config_id>", methods=["POST"])
+def migrate_repeat(config_id):
+    """Load a saved config into session and redirect to confirm page."""
+    configs = _load_configs()
+    cfg = next((c for c in configs if c["id"] == config_id), None)
+    if not cfg:
+        flash("Migration configuration not found.", "error")
+        return redirect(url_for("home"))
+    
+    conns = _load_connections()
+    
+    mt = cfg["migration_type"]
+    source_is_sn = mt in ("sn_sn", "sn_sf")
+    target_is_sn = mt in ("sn_sn", "sf_sn")
+
+    session.clear()  # clear previous state
+    session["migration_type"] = mt
+    session["source_table"] = cfg["source_table"]
+    session["target_table"] = cfg["target_table"]
+    session["field_mapping"] = cfg["field_mapping"]
+    session["filter_conditions"] = cfg.get("filter_conditions", [])
+    session["fetch_mode"] = cfg.get("fetch_mode", "auto")
+
+    # Load source connection credentials into session
+    if source_is_sn:
+        inst = cfg.get("source_instance", "")
+        conn = next((c for c in conns if c.get("instance") == inst and c.get("platform") == "sn"), None)
+        if conn:
+            session["source_instance"] = conn["instance"]
+            session["source_username"] = conn["username"]
+            session["source_password"] = conn["password"]
+        else:
+            flash(f"ServiceNow source connection '{inst}' not found. Please restore it in Connections page.", "error")
+            return redirect(url_for("connect_page"))
+    else:
+        username = cfg.get("sf_source_username", "")
+        login_url = cfg.get("sf_source_login_url", "")
+        conn = next((c for c in conns if c.get("username") == username and c.get("login_url") == login_url and c.get("platform") == "sf"), None)
+        if conn:
+            session["sf_source_login_url"] = conn["login_url"]
+            session["sf_source_username"] = conn["username"]
+            session["sf_source_password"] = conn["password"]
+            session["sf_source_security_token"] = conn.get("security_token", "")
+        else:
+            flash(f"Salesforce source connection '{username}' not found. Please restore it in Connections page.", "error")
+            return redirect(url_for("connect_page"))
+
+    # Load target connection credentials into session
+    if target_is_sn:
+        inst = cfg.get("target_instance", "")
+        conn = next((c for c in conns if c.get("instance") == inst and c.get("platform") == "sn"), None)
+        if conn:
+            session["target_instance"] = conn["instance"]
+            session["target_username"] = conn["username"]
+            session["target_password"] = conn["password"]
+        else:
+            flash(f"ServiceNow target connection '{inst}' not found. Please restore it in Connections page.", "error")
+            return redirect(url_for("connect_page"))
+    else:
+        username = cfg.get("sf_target_username", "")
+        login_url = cfg.get("sf_target_login_url", "")
+        conn = next((c for c in conns if c.get("username") == username and c.get("login_url") == login_url and c.get("platform") == "sf"), None)
+        if conn:
+            session["sf_target_login_url"] = conn["login_url"]
+            session["sf_target_username"] = conn["username"]
+            session["sf_target_password"] = conn["password"]
+            session["sf_target_security_token"] = conn.get("security_token", "")
+        else:
+            flash(f"Salesforce target connection '{username}' not found. Please restore it in Connections page.", "error")
+            return redirect(url_for("connect_page"))
+
+    # Also populates _source_fields and metadata since fields.html expects it
+    if cfg.get("field_mapping"):
+        f_list = [{"name": k, "label": k} for k in cfg["field_mapping"].keys()]
+        session["_source_fields"] = f_list
+        return redirect(url_for("migrate_confirm"))
+    else:
+        # Config was seeded from history without field_mapping — send user to the
+        # fields step (table and connection are already in session).
+        flash("Table and connection loaded. Please set up field mapping to continue.", "info")
+        return redirect(url_for("fields"))
+
+
+@app.route("/migrate/confirm", methods=["GET", "POST"])
+def migrate_confirm():
+    """Show confirmation summary before running a repeated/pre-configured migration."""
+    if request.method == "POST":
+        return redirect(url_for("migrate"))
+
+    mapping = session.get("field_mapping")
+    if not mapping:
+        flash("Configure field mapping first.", "error")
+        return redirect(url_for("home"))
+
+    mt = session.get("migration_type", "sn_sn")
+    source_is_sn = mt in ("sn_sn", "sn_sf")
+    target_is_sn = mt in ("sn_sn", "sf_sn")
+
+    source_info = session.get("source_instance", "") if source_is_sn else session.get("sf_source_username", "")
+    target_info = session.get("target_instance", "") if target_is_sn else session.get("sf_target_username", "")
+
+    return render_template(
+        "migrate_confirm.html",
+        migration_type=mt,
+        source_table=session.get("source_table"),
+        target_table=session.get("target_table"),
+        source_info=source_info,
+        target_info=target_info,
+        field_count=len(mapping),
+        filter_conditions=session.get("filter_conditions", []),
+        fetch_mode=session.get("fetch_mode", "auto"),
+    )
+
+
 @app.route("/migrate", methods=["GET"])
 def migrate():
     """Render migration progress page and kick off background work."""
@@ -861,6 +1211,7 @@ def migrate():
         "field_mapping": session["field_mapping"],
         "source_fields_meta": session.get("_source_fields", []),
         "fetch_mode": session.get("fetch_mode", "auto"),
+        "filter_conditions": session.get("filter_conditions", []),
     }
 
     # SN credentials
@@ -926,6 +1277,20 @@ def migrate_stream():
     )
 
 
+@app.route("/migrate/pause", methods=["POST"])
+def migrate_pause():
+    _pause_event.clear()
+    logger.info("Migration paused by user request.")
+    return jsonify({"status": "paused"})
+
+
+@app.route("/migrate/resume", methods=["POST"])
+def migrate_resume():
+    _pause_event.set()
+    logger.info("Migration resumed by user request.")
+    return jsonify({"status": "running"})
+
+
 # ─────────────────────────────────────────────────────────────────────
 # Background migration runner
 # ─────────────────────────────────────────────────────────────────────
@@ -934,6 +1299,7 @@ def _run_migration(ctx: dict):
     """Execute the migration pipeline on a background thread."""
     global _progress_q
     _progress_q = queue.Queue()  # fresh queue for each run
+    _pause_event.set()  # Make sure we start in running state
 
     mt = ctx.get("migration_type", "sn_sn")
     source_is_sn = mt in ("sn_sn", "sn_sf")
@@ -988,9 +1354,12 @@ def _run_migration(ctx: dict):
             sf_external_id_field = "SN_Legacy_Id__c"
 
         def progress_cb(phase, processed, total, detail=""):
+            event_type = "progress"
+            if phase in ("paused", "resuming"):
+                event_type = phase
             _progress_q.put(
                 {
-                    "event": "progress",
+                    "event": event_type,
                     "data": {
                         "phase": phase,
                         "processed": processed,
@@ -1012,6 +1381,8 @@ def _run_migration(ctx: dict):
             fetch_mode=ctx.get("fetch_mode", "auto"),
             migration_type=mt,
             sf_external_id_field=sf_external_id_field,
+            filter_conditions=ctx.get("filter_conditions"),
+            pause_event=_pause_event,
         )
 
         report = orchestrator.run()
@@ -1078,6 +1449,7 @@ def _run_migration(ctx: dict):
 
 if __name__ == "__main__":
     logger.info("Starting SN Migration Tool on port %d", FLASK_PORT)
+    _seed_configs_from_history()   # populate recent configs from history if not yet seeded
     app.run(
         host="0.0.0.0",
         port=FLASK_PORT,

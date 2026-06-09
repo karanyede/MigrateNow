@@ -73,6 +73,13 @@ class SalesforceLoader:
         self.external_id_field = external_id_field
         self.batch_size = min(batch_size, 200)  # SF max is 200
         self._progress = progress_callback
+        self._processed = 0
+        self._total = 0
+
+    def _report_progress(self, count: int, phase: str) -> None:
+        self._processed += count
+        if self._progress:
+            self._progress(self._processed, self._total, phase)
 
     # ─────────────────────────────────────────────────────────────────
     # Public API
@@ -90,8 +97,8 @@ class SalesforceLoader:
         Returns an ``SFLoadResult`` with counts and any failed records.
         """
         result = SFLoadResult()
-        total = len(inserts) + len(updates)
-        processed = 0
+        self._total = len(inserts) + len(updates)
+        self._processed = 0
         t0 = time.perf_counter()
 
         # ── Phase 1: Inserts ─────────────────────────────────────────
@@ -101,9 +108,6 @@ class SalesforceLoader:
             result.failed += fail
             result.failed_records.extend(failed_recs)
             result.batch_count += 1
-            processed += len(inserts)
-            if self._progress:
-                self._progress(processed, total, "insert")
 
         # ── Phase 2: Updates (upsert if we have external ID) ─────────
         if updates:
@@ -112,9 +116,6 @@ class SalesforceLoader:
             result.failed += fail
             result.failed_records.extend(failed_recs)
             result.batch_count += 1
-            processed += len(updates)
-            if self._progress:
-                self._progress(processed, total, "update")
 
         result.elapsed_seconds = time.perf_counter() - t0
         logger.info(
@@ -282,6 +283,7 @@ class SalesforceLoader:
             "Bulk API 2.0 insert: %d OK, %d failed — 1 job.",
             ok, fail,
         )
+        self._report_progress(len(records), "insert")
         return ok, fail, failed_records
 
     # ── Bulk API 2.0 Upsert ──────────────────────────────────────────
@@ -334,6 +336,7 @@ class SalesforceLoader:
             "Bulk API 2.0 upsert: %d OK, %d failed — 1 job.",
             ok, fail,
         )
+        self._report_progress(len(records), "update")
         return ok, fail, failed_records
 
     # ── SObject Collections Insert ───────────────────────────────────
@@ -370,6 +373,7 @@ class SalesforceLoader:
                 logger.error("Collections insert chunk failed: %s", exc)
                 fail += len(chunk)
                 failed_records.extend(chunk)
+            self._report_progress(len(chunk), "insert")
 
         logger.info(
             "SObject Collections insert: %d OK, %d failed.", ok, fail
@@ -416,6 +420,7 @@ class SalesforceLoader:
                 logger.error("Collections update chunk failed: %s", exc)
                 fail += len(chunk)
                 failed_records.extend(chunk)
+            self._report_progress(len(chunk), "update")
 
         logger.info(
             "SObject Collections update: %d OK, %d failed.", ok, fail
@@ -448,6 +453,7 @@ class SalesforceLoader:
                 )
                 fail += 1
                 failed_records.append(rec)
+            self._report_progress(1, "insert")
 
         return ok, fail, failed_records
 
@@ -479,6 +485,7 @@ class SalesforceLoader:
                 )
                 fail += 1
                 failed_records.append(rec)
+            self._report_progress(1, "update")
 
         return ok, fail, failed_records
 

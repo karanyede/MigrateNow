@@ -2,19 +2,22 @@
  * MigrateNow — Client-side helpers
  *
  * Modules:
- *  - initToasts()          — flash messages → auto-dismiss toast notifications
- *  - initStatCounters()    — animated count-up for dashboard stat cards
- *  - initSidebarState()    — highlight the active nav item from URL
- *  - initTableSearch()     — live AJAX table/object search on Tables page
- *  - initFieldFilter()     — field name filter on Fields page
- *  - initMappingAutoCheck()— auto-check checkbox when a mapping is selected
- *  - initFormGuards()      — prevent double-submit on forms
+ *  - initToasts()           — flash messages → auto-dismiss toast notifications
+ *  - initStatCounters()     — animated count-up for dashboard stat cards
+ *  - initSidebarState()     — highlight the active nav item from URL
+ *  - initSidebarCollapse()  — toggle sidebar expand/collapse; persist to localStorage
+ *  - initThemeToggle()      — switch light/dark theme; persist to localStorage
+ *  - initTableSearch()      — live AJAX table/object search on Tables page
+ *  - initFieldFilter()      — field name filter on Fields page
+ *  - initMappingAutoCheck() — auto-check checkbox when a mapping is selected
+ *  - initFormGuards()       — prevent double-submit on forms
  */
 
 document.addEventListener('DOMContentLoaded', () => {
     initToasts();
     initStatCounters();
     initSidebarState();
+    initSidebarCollapse();
     initTableSearch();
     initFieldFilter();
     initMappingAutoCheck();
@@ -29,7 +32,7 @@ function initToasts() {
     // Read flash data elements injected by the template
     document.querySelectorAll('.flash-data').forEach(el => {
         const category = el.dataset.category || 'info';
-        const message  = el.dataset.message  || '';
+        const message = el.dataset.message || '';
         showToast(message, category, container);
         el.remove();
     });
@@ -40,9 +43,9 @@ function showToast(message, category, container) {
     if (!container) return;
 
     const iconMap = {
-        error:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z"/></svg>`,
+        error: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z"/></svg>`,
         success: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg>`,
-        info:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"/></svg>`,
+        info: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"/></svg>`,
     };
 
     const toast = document.createElement('div');
@@ -70,9 +73,9 @@ function initStatCounters() {
         const start = Date.now();
 
         function tick() {
-            const elapsed  = Date.now() - start;
+            const elapsed = Date.now() - start;
             const progress = Math.min(elapsed / duration, 1);
-            const value    = Math.round(target * easeOutCubic(progress));
+            const value = Math.round(target * easeOutCubic(progress));
             el.textContent = value.toLocaleString() + (suffix || '');
             if (progress < 1) requestAnimationFrame(tick);
         }
@@ -83,7 +86,7 @@ function initStatCounters() {
     const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
             if (entry.isIntersecting) {
-                const el     = entry.target;
+                const el = entry.target;
                 const target = parseInt(el.dataset.count, 10) || 0;
                 const suffix = el.dataset.suffix || '';
                 if (target > 0) animateCounter(el, target, suffix);
@@ -110,6 +113,35 @@ function initSidebarState() {
     }
 }
 
+// ─── Sidebar Collapse ─────────────────────────────────────────────
+function initSidebarCollapse() {
+    const toggleBtn = document.getElementById('sidebarToggle');
+    if (!toggleBtn) return;
+
+    // Remove the FOUC-prevention style tag after the real CSS is applied.
+    // requestAnimationFrame fires after the browser has painted once with
+    // the real stylesheet, so removing the injected overrides is safe.
+    requestAnimationFrame(function() {
+        var foucStyle = document.getElementById('mn-sidebar-fouc');
+        if (foucStyle) foucStyle.parentNode.removeChild(foucStyle);
+    });
+
+    toggleBtn.addEventListener('click', () => {
+        // Enable smooth transitions only when the user manually toggles
+        document.documentElement.classList.add('sidebar-transitions');
+        const isCollapsed = document.documentElement.getAttribute('data-sidebar') === 'collapsed';
+        if (isCollapsed) {
+            document.documentElement.removeAttribute('data-sidebar');
+            localStorage.setItem('mn-sidebar', 'expanded');
+        } else {
+            document.documentElement.setAttribute('data-sidebar', 'collapsed');
+            localStorage.setItem('mn-sidebar', 'collapsed');
+        }
+    });
+}
+
+
+
 // ─── Live Table / Object Search (Tables page) ────────────────────
 // Note: The enhanced dropdown UI is implemented inline in tables.html.
 // This handles the legacy <select>-based search for any fallback cases.
@@ -120,10 +152,10 @@ function initTableSearch() {
             return; // handled by inline script in tables.html
         }
 
-        const selectId   = input.dataset.select;
-        const instance   = input.dataset.instance;
+        const selectId = input.dataset.select;
+        const instance = input.dataset.instance;
         const searchType = input.dataset.searchType || 'sn';
-        const select     = document.getElementById(selectId);
+        const select = document.getElementById(selectId);
         if (!select) return;
 
         let timer = null;
@@ -196,7 +228,7 @@ function initFieldFilter() {
     fieldFilter.addEventListener('input', () => {
         const q = fieldFilter.value.toLowerCase().trim();
         rows.forEach(row => {
-            const name  = row.dataset.sourceField || '';
+            const name = row.dataset.sourceField || '';
             const label = row.querySelector('.field-label')?.textContent || '';
             row.style.display = (!q || name.toLowerCase().includes(q) || label.toLowerCase().includes(q)) ? '' : 'none';
         });
@@ -210,9 +242,9 @@ function initMappingAutoCheck() {
         sel.dataset.autoCheckInit = 'true';
 
         sel.addEventListener('change', () => {
-            const row   = sel.closest('tr');
+            const row = sel.closest('tr');
             if (!row) return;
-            const cb    = row.querySelector('.field-include-cb');
+            const cb = row.querySelector('.field-include-cb');
             const badge = row.querySelector('.mapping-badge');
             if (sel.value) {
                 if (cb) cb.checked = true;

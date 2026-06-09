@@ -41,12 +41,14 @@ class BulkFetcher:
         table_name: str,
         fields: list[str],
         page_size: int = 2000,
+        extra_query: str = "",
     ) -> None:
         self.client = client
         self.table = table_name
         # Always fetch sys_id — it's the keyset cursor and the primary key.
         self.fields = list(dict.fromkeys(["sys_id"] + fields))
         self.page_size = page_size
+        self.extra_query = extra_query
 
     # ─────────────────────────────────────────────────────────────────
     # Generator API
@@ -68,6 +70,7 @@ class BulkFetcher:
                 last_sys_id=last_id,
                 limit=self.page_size,
                 fields=self.fields,
+                extra_query=self.extra_query,
             )
             if not page:
                 break

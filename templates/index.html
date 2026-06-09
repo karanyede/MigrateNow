@@ -38,14 +38,16 @@
     </div>
 </div>
 
+
+
 {# Build lists of saved connections by platform #}
 {% set sn_connections = saved_connections | selectattr('platform', 'eq', 'sn') | list %}
 {% set sf_connections = saved_connections | selectattr('platform', 'eq', 'sf') | list %}
 
 <form method="POST" action="{{ url_for('connect') }}" id="connectForm">
     <!-- Dynamic platform hidden values -->
-    <input type="hidden" name="source_platform" id="sourcePlatform" value="sn">
-    <input type="hidden" name="target_platform" id="targetPlatform" value="sn">
+    <input type="hidden" name="source_platform" id="sourcePlatform" value="{{ migration_type.split('_')[0] if migration_type else 'sn' }}">
+    <input type="hidden" name="target_platform" id="targetPlatform" value="{{ migration_type.split('_')[1] if migration_type else 'sn' }}">
 
     <div class="connect-panels" style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; align-items:start; margin-bottom:1.5rem;">
 
@@ -378,20 +380,76 @@
                 </div>
             </div>
         </div>
+    </div> <!-- End .connect-panels -->
 
-    </div>{# end .connect-panels #}
+</form> <!-- End #connectForm -->
 
-    <div class="btn-row">
-        <a href="{{ url_for('home') }}" class="btn btn-secondary">← Back to Dashboard</a>
-        <button type="submit" class="btn btn-primary btn-lg" id="btnConnect">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"/>
-            </svg>
-            Connect &amp; Continue →
-        </button>
+<div class="btn-row" style="justify-content: flex-end; margin-top: 1.5rem;">
+    <button type="submit" form="connectForm" class="btn btn-primary btn-lg" id="btnConnect" disabled style="opacity: 0.5; pointer-events: none;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"/>
+        </svg>
+        Connect &amp; Continue →
+    </button>
+</div>
+
+<!-- ════════════════════════════════════════════════════════
+   RECENT TRANSACTIONS (MIGRATIONS)
+   ════════════════════════════════════════════════════════ -->
+{% if recent_configs %}
+<hr style="border: 0; border-top: 1px solid var(--border-subtle); margin: 2rem 0;">
+
+<div class="card" style="margin-top: 1.5rem; margin-bottom: 1.5rem;">
+    <div class="card__title" style="margin-bottom: 0.5rem; font-size: 0.9rem; display:flex; align-items:center; gap:0.4rem;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--violet);">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+        </svg>
+        Recent Transactions
     </div>
-
-</form>
+    <div class="card__subtitle" style="margin-bottom: 1rem;">Quickly repeat a previous migration using the same connections, tables, and configurations.</div>
+    
+    <div style="display:flex; flex-direction:column; gap:0.75rem;">
+        {% for cfg in recent_configs %}
+        <div style="display:flex; align-items:center; justify-content:space-between; background:var(--surface-3); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); padding:0.75rem 1rem; gap:0.75rem;">
+            <div style="flex: 1; min-width: 0;">
+                <!-- Tables Mapping -->
+                <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600; font-size: 0.88rem; color: var(--text-primary);">
+                    <span style="color: var(--cyan);">{{ cfg.source_table }}</span>
+                    <span style="color: var(--text-muted); font-size: 0.75rem;">➔</span>
+                    <span style="color: var(--emerald);">{{ cfg.target_table }}</span>
+                </div>
+                <!-- Connection Details (Instances / Usernames) -->
+                <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; display: flex; flex-direction: column; gap: 0.2rem;">
+                    <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; word-break: break-all;">
+                        {% if cfg.migration_type is defined and cfg.migration_type.startswith('sn') %}
+                            <span>{{ (cfg.source_instance | default('')).replace('.service-now.com','') }}</span>
+                        {% else %}
+                            <span>{{ cfg.sf_source_username | default('') }}</span>
+                        {% endif %}
+                        <span style="color: var(--text-muted);">➔</span>
+                        {% if cfg.migration_type is defined and cfg.migration_type.endswith('sn') %}
+                            <span>{{ (cfg.target_instance | default('')).replace('.service-now.com','') }}</span>
+                        {% else %}
+                            <span>{{ cfg.sf_target_username | default('') }}</span>
+                        {% endif %}
+                    </div>
+                    <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.1rem;">
+                        {{ cfg.last_run_at[:16].replace('T', ' ') if cfg.last_run_at is defined else '' }}
+                    </div>
+                </div>
+            </div>
+            <button type="submit" form="repeatForm_{{ cfg.id }}" class="btn btn-secondary btn-sm" style="flex-shrink:0; display:flex; align-items:center; gap:4px; font-size:0.75rem; padding:0.35rem 0.75rem; cursor:pointer;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:11px;height:11px;">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+                Migrate Again
+            </button>
+            <form id="repeatForm_{{ cfg.id }}" method="POST" action="{{ url_for('migrate_repeat', config_id=cfg.id) }}" style="display:none;"></form>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -538,46 +596,52 @@ function enforceUniqueInstances() {
     // Reset all options to display first
     document.querySelectorAll('.conn-picker__item').forEach(el => el.style.display = '');
 
-    const srcSelected = document.querySelector('#srcSNConnPicker .selected, #srcSFConnPicker .selected');
-    const tgtSelected = document.querySelector('#tgtSNConnPicker .selected, #tgtSFConnPicker .selected');
+    const srcPlat = document.getElementById('sourcePlatform').value;
+    const tgtPlat = document.getElementById('targetPlatform').value;
 
-    if (srcSelected) {
-        const srcId = srcSelected.dataset.connId;
-        const srcInst = srcSelected.dataset.instance;
-        const srcUser = srcSelected.dataset.username;
+    if (srcPlat === tgtPlat) {
+        const srcSelected = document.querySelector('#src' + srcPlat.toUpperCase() + 'ConnPicker .selected');
+        const tgtSelected = document.querySelector('#tgt' + tgtPlat.toUpperCase() + 'ConnPicker .selected');
 
-        document.querySelectorAll('#tgtSNConnPicker .conn-picker__item, #tgtSFConnPicker .conn-picker__item').forEach(el => {
-            const isMatch = el.dataset.connId === srcId || 
-                (srcInst && el.dataset.instance === srcInst) || 
-                (!srcInst && srcUser && el.dataset.username === srcUser);
-            if (isMatch) {
-                el.style.display = 'none';
-                if (el.classList.contains('selected')) {
-                    el.classList.remove('selected');
-                    resetInputs('target');
+        if (srcSelected) {
+            const srcId = srcSelected.dataset.connId;
+            const srcInst = srcSelected.dataset.instance;
+            const srcUser = srcSelected.dataset.username;
+
+            document.querySelectorAll('#tgt' + tgtPlat.toUpperCase() + 'ConnPicker .conn-picker__item').forEach(el => {
+                const isMatch = el.dataset.connId === srcId || 
+                    (srcInst && el.dataset.instance === srcInst) || 
+                    (!srcInst && srcUser && el.dataset.username === srcUser);
+                if (isMatch) {
+                    el.style.display = 'none';
+                    if (el.classList.contains('selected')) {
+                        el.classList.remove('selected');
+                        resetInputs('target');
+                    }
                 }
-            }
-        });
-    }
+            });
+        }
 
-    if (tgtSelected) {
-        const tgtId = tgtSelected.dataset.connId;
-        const tgtInst = tgtSelected.dataset.instance;
-        const tgtUser = tgtSelected.dataset.username;
+        if (tgtSelected) {
+            const tgtId = tgtSelected.dataset.connId;
+            const tgtInst = tgtSelected.dataset.instance;
+            const tgtUser = tgtSelected.dataset.username;
 
-        document.querySelectorAll('#srcSNConnPicker .conn-picker__item, #srcSFConnPicker .conn-picker__item').forEach(el => {
-            const isMatch = el.dataset.connId === tgtId || 
-                (tgtInst && el.dataset.instance === tgtInst) || 
-                (!tgtInst && tgtUser && el.dataset.username === tgtUser);
-            if (isMatch) {
-                el.style.display = 'none';
-                if (el.classList.contains('selected')) {
-                    el.classList.remove('selected');
-                    resetInputs('source');
+            document.querySelectorAll('#src' + srcPlat.toUpperCase() + 'ConnPicker .conn-picker__item').forEach(el => {
+                const isMatch = el.dataset.connId === tgtId || 
+                    (tgtInst && el.dataset.instance === tgtInst) || 
+                    (!tgtInst && tgtUser && el.dataset.username === tgtUser);
+                if (isMatch) {
+                    el.style.display = 'none';
+                    if (el.classList.contains('selected')) {
+                        el.classList.remove('selected');
+                        resetInputs('source');
+                    }
                 }
-            }
-        });
+            });
+        }
     }
+    updateConnectButtonState();
 }
 
 function resetInputs(role) {
@@ -602,6 +666,7 @@ function resetInputs(role) {
     }
     const panel = document.getElementById(isSrc ? 'srcCredPanel' : 'tgtCredPanel');
     panel.classList.remove('open');
+    updateConnectButtonState();
 }
 
 // ── Form submit validation ────────────────────────────────
@@ -653,11 +718,123 @@ function showConnectError(msg) {
     }
 }
 
+function updateConnectButtonState() {
+    const btn = document.getElementById('btnConnect');
+    if (!btn) return;
+
+    const srcPlat = document.getElementById('sourcePlatform').value;
+    const tgtPlat = document.getElementById('targetPlatform').value;
+
+    let srcValid = false;
+    const srcPanelOpen = document.getElementById('srcCredPanel').classList.contains('open');
+    if (srcPlat === 'sn') {
+        const hasSelectedCard = document.querySelector('#srcSNConnPicker .selected') !== null;
+        const hasInputs = val('source_instance') && val('source_username') && val('source_password');
+        srcValid = hasSelectedCard || (srcPanelOpen && hasInputs);
+    } else {
+        const hasSelectedCard = document.querySelector('#srcSFConnPicker .selected') !== null;
+        const hasInputs = val('sf_source_username') && val('sf_source_password');
+        srcValid = hasSelectedCard || (srcPanelOpen && hasInputs);
+    }
+
+    let tgtValid = false;
+    const tgtPanelOpen = document.getElementById('tgtCredPanel').classList.contains('open');
+    if (tgtPlat === 'sn') {
+        const hasSelectedCard = document.querySelector('#tgtSNConnPicker .selected') !== null;
+        const hasInputs = val('target_instance') && val('target_username') && val('target_password');
+        tgtValid = hasSelectedCard || (tgtPanelOpen && hasInputs);
+    } else {
+        const hasSelectedCard = document.querySelector('#tgtSFConnPicker .selected') !== null;
+        const hasInputs = val('sf_target_username') && val('sf_target_password');
+        tgtValid = hasSelectedCard || (tgtPanelOpen && hasInputs);
+    }
+
+    if (srcValid && tgtValid) {
+        btn.removeAttribute('disabled');
+        btn.style.opacity = '1';
+        btn.style.pointerEvents = 'auto';
+    } else {
+        btn.setAttribute('disabled', 'true');
+        btn.style.opacity = '0.5';
+        btn.style.pointerEvents = 'none';
+    }
+}
+
+function autoSelectConnection(role) {
+    const isSrc = role === 'source';
+    const plat = document.getElementById(isSrc ? 'sourcePlatform' : 'targetPlatform').value;
+    const prefix = isSrc ? 'src' : 'tgt';
+    
+    // Get pre-populated values
+    let currentInstance = '';
+    let currentUsername = '';
+    let currentLoginUrl = '';
+    
+    if (plat === 'sn') {
+        currentInstance = val(isSrc ? 'source_instance' : 'target_instance');
+        currentUsername = val(isSrc ? 'source_username' : 'target_username');
+    } else {
+        currentUsername = val('sf_' + role + '_username');
+        currentLoginUrl = val('sf_' + role + '_login_url');
+    }
+    
+    if (!currentUsername && !currentInstance) {
+        // Empty inputs, keep closed and clean
+        return;
+    }
+    
+    // Try to find a matching card
+    let matchedCard = null;
+    const cards = document.querySelectorAll('[id^="' + prefix + plat.toUpperCase() + 'Conn_"]');
+    cards.forEach(card => {
+        if (plat === 'sn') {
+            if (card.dataset.instance === currentInstance && card.dataset.username === currentUsername) {
+                matchedCard = card;
+            }
+        } else {
+            if (card.dataset.username === currentUsername && card.dataset.loginUrl === currentLoginUrl) {
+                matchedCard = card;
+            }
+        }
+    });
+    
+    if (matchedCard) {
+        // Programmatically select the card
+        applyConn(role, matchedCard);
+    } else {
+        // No match, but inputs have values: open the cred panel
+        const panel = document.getElementById(isSrc ? 'srcCredPanel' : 'tgtCredPanel');
+        if (panel) panel.classList.add('open');
+    }
+}
+
 // ── Initialize ────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
-    setPlatform('source', 'sn');
-    setPlatform('target', 'sn');
-    // Credential panels stay hidden until user selects a saved connection
+    const srcPlat = document.getElementById('sourcePlatform').value || 'sn';
+    const tgtPlat = document.getElementById('targetPlatform').value || 'sn';
+    setPlatform('source', srcPlat);
+    setPlatform('target', tgtPlat);
+    
+    // Auto-select connections on load if matching cards exist, otherwise open creds if populated
+    autoSelectConnection('source');
+    autoSelectConnection('target');
+    
+    // Add input event listeners to all credential fields
+    const credInputs = [
+        'source_instance', 'source_username', 'source_password',
+        'sf_source_username', 'sf_source_password',
+        'target_instance', 'target_username', 'target_password',
+        'sf_target_username', 'sf_target_password'
+    ];
+    credInputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', updateConnectButtonState);
+            el.addEventListener('change', updateConnectButtonState);
+        }
+    });
+
+    updateConnectButtonState();
 });
 </script>
 {% endblock %}

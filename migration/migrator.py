@@ -27,6 +27,7 @@ if sys.platform.startswith("win"):
 import json
 import logging
 import time
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -115,10 +116,12 @@ class MigrationReport:
             "  API Calls Made:",
             f"    Source: {src_api.get('calls_made', 0):>6}"
             f"  (Limit: {src_api.get('rate_limit_per_hour', '?')}/hr,"
-            f" ~{src_api.get('estimated_remaining', '?')} remaining)",
+            f" run ~{src_api.get('estimated_remaining', '?')} left,"
+            f" org ~{src_api.get('org_remaining', '?')} left)",
             f"    Target: {tgt_api.get('calls_made', 0):>6}"
             f"  (Limit: {tgt_api.get('rate_limit_per_hour', '?')}/hr,"
-            f" ~{tgt_api.get('estimated_remaining', '?')} remaining)",
+            f" run ~{tgt_api.get('estimated_remaining', '?')} left,"
+            f" org ~{tgt_api.get('org_remaining', '?')} left)",
             dash,
             f"  Total API Calls:  {self.api_calls.get('total_calls', 0):>8,}",
             sep,
@@ -196,6 +199,8 @@ class MigrationOrchestrator:
         fetch_mode: str = "auto",
         migration_type: str = "sn_sn",
         sf_external_id_field: str | None = None,
+        filter_conditions: list | None = None,
+        pause_event: threading.Event | None = None,
     ) -> None:
         self.src = source_client
         self.tgt = target_client
@@ -207,6 +212,8 @@ class MigrationOrchestrator:
         self.fetch_mode = fetch_mode
         self.migration_type = migration_type
         self.sf_external_id_field = sf_external_id_field
+        self.filter_conditions = filter_conditions or []
+        self.pause_event = pause_event
         # Build {field_name: ref_table} for reference fields in the mapping
         self._ref_fields: dict[str, str] = {}
         if source_fields_meta and self._is_source_sn:
@@ -402,6 +409,147 @@ class MigrationOrchestrator:
                 logger.warning("Name lookup failed for %s: %s", table, e)
         return result
 
+    def _build_sn_query(self, filters: list) -> str:
+        """Converts filter conditions JSON → SN encoded query string."""
+        if not filters:
+            return ""
+        
+        group_queries = []
+        for group in filters:
+            if not group:
+                continue
+            cond_queries = []
+            for cond in group:
+                field = cond.get("field")
+                op = cond.get("op")
+                val = cond.get("value", "")
+                if not field or not op:
+                    continue
+                if op == "EMPTY":
+                    cond_queries.append(f"{field}ISEMPTY")
+                elif op == "NOTEMPTY":
+                    cond_queries.append(f"{field}ISNOTEMPTY")
+                else:
+                    cond_queries.append(f"{field}{op}{val}")
+            if cond_queries:
+                # Group conditions are OR-ed in ServiceNow using ^OR
+                group_queries.append("^OR".join(cond_queries))
+        
+        if not group_queries:
+            return ""
+        
+        # Groups are AND-ed using ^
+        return "^".join(group_queries)
+
+    def _build_sf_where(self, filters: list) -> str:
+        """Converts filter conditions JSON → SOQL WHERE clause."""
+        if not filters:
+            return ""
+        
+        def escape_string(s: str) -> str:
+            return s.replace("'", "\\'")
+
+        def format_soql_val(val: str, op: str) -> str:
+            val = val.strip()
+            if op.upper() == "IN":
+                parts = [p.strip() for p in val.split(",") if p.strip()]
+                formatted_parts = []
+                for p in parts:
+                    if p.lower() in ("true", "false"):
+                        formatted_parts.append(p.lower())
+                    else:
+                        try:
+                            float(p)
+                            formatted_parts.append(p)
+                        except ValueError:
+                            formatted_parts.append(f"'{escape_string(p)}'")
+                return "(" + ", ".join(formatted_parts) + ")"
+            
+            if val.lower() in ("true", "false"):
+                return val.lower()
+            try:
+                float(val)
+                return val
+            except ValueError:
+                escaped = escape_string(val)
+                if op.upper() == "LIKE":
+                    if not escaped.startswith("%") and not escaped.endswith("%"):
+                        return f"'%{escaped}%'"
+                return f"'{escaped}'"
+
+        group_queries = []
+        for group in filters:
+            if not group:
+                continue
+            cond_queries = []
+            for cond in group:
+                field = cond.get("field")
+                op = cond.get("op")
+                val = cond.get("value", "")
+                if not field or not op:
+                    continue
+                
+                op_upper = op.upper()
+                if op_upper in ("IS NULL", "IS NOT NULL"):
+                    cond_queries.append(f"{field} {op_upper}")
+                else:
+                    formatted_val = format_soql_val(val, op)
+                    cond_queries.append(f"{field} {op} {formatted_val}")
+            
+            if cond_queries:
+                if len(cond_queries) > 1:
+                    group_queries.append("(" + " OR ".join(cond_queries) + ")")
+                else:
+                    group_queries.append(cond_queries[0])
+        
+        if not group_queries:
+            return ""
+        
+        # Groups are AND-ed in SOQL
+        return " AND ".join(group_queries)
+
+    @staticmethod
+    def _escape_sf_string(value: str) -> str:
+        """Escape single quotes for SOQL string literals."""
+        return str(value).replace("\\", "\\\\").replace("'", "\\'")
+
+    @staticmethod
+    def _chunk(values: list[str], size: int) -> list[list[str]]:
+        """Split a list into fixed-size chunks."""
+        return [values[i:i + size] for i in range(0, len(values), size)]
+
+    def _fetch_sf_target_by_key_values(
+        self,
+        object_name: str,
+        fields: list[str],
+        key_field: str,
+        key_values: set[str],
+        chunk_size: int = 100,
+    ) -> list[dict]:
+        """
+        Fetch only candidate target records by key values using SOQL IN.
+
+        This avoids full-object scans when source payloads are small.
+        """
+        clean_values = sorted({str(v).strip() for v in key_values if str(v).strip()})
+        if not clean_values:
+            return []
+
+        select_fields = list(dict.fromkeys(fields + [key_field]))
+        field_list = ",".join(select_fields)
+        all_records: list[dict] = []
+
+        for vals in self._chunk(clean_values, chunk_size):
+            quoted = ",".join(f"'{self._escape_sf_string(v)}'" for v in vals)
+            soql = (
+                f"SELECT {field_list} FROM {object_name} "
+                f"WHERE {key_field} IN ({quoted}) ORDER BY Id"
+            )
+            all_records.extend(self.tgt.query(soql))
+
+        return all_records
+
+
     # ─────────────────────────────────────────────────────────────────
     # Source fetch strategies
     # ─────────────────────────────────────────────────────────────────
@@ -422,6 +570,7 @@ class MigrationOrchestrator:
                 client=self.src,
                 table_name=self.src_table,
                 fields=source_fields,
+                extra_query=self._build_sn_query(self.filter_conditions),
             )
             records = csv_fetcher.fetch_all()
 
@@ -457,7 +606,11 @@ class MigrationOrchestrator:
         """
         self._emit("fetch_source", 0, 0, "Fetching source via REST API…")
         fetcher = BulkFetcher(
-            self.src, self.src_table, source_fields, FETCH_PAGE_SIZE
+            client=self.src,
+            table_name=self.src_table,
+            fields=source_fields,
+            page_size=FETCH_PAGE_SIZE,
+            extra_query=self._build_sn_query(self.filter_conditions),
         )
         return fetcher.fetch_all()
 
@@ -478,6 +631,7 @@ class MigrationOrchestrator:
                 client=self.src,
                 object_name=self.src_table,
                 fields=source_fields,
+                extra_where=self._build_sf_where(self.filter_conditions),
             )
             records = fetcher.fetch_all()
             if records:
@@ -496,7 +650,11 @@ class MigrationOrchestrator:
         """Fetch source records from SF using REST /query."""
         self._emit("fetch_source", 0, 0, "Fetching source via SF REST /query…")
         field_list = ",".join(dict.fromkeys(["Id"] + source_fields))
-        soql = f"SELECT {field_list} FROM {self.src_table} ORDER BY Id"
+        soql = f"SELECT {field_list} FROM {self.src_table}"
+        extra_where = self._build_sf_where(self.filter_conditions)
+        if extra_where:
+            soql += f" WHERE {extra_where}"
+        soql += " ORDER BY Id"
         return self.src.query(soql)
 
     def run(self) -> MigrationReport:
@@ -579,11 +737,24 @@ class MigrationOrchestrator:
             if self.sf_external_id_field and self.sf_external_id_field not in target_fields:
                 target_fields.append(self.sf_external_id_field)
 
+            target_valid_fields: set[str] | None = None
+            external_id_available = False
+            external_id_mapped = False
+
             # Validate fields against the target object's describe
             try:
                 target_describe = self.tgt.get_object_fields(self.tgt_table)
-                valid_field_names = {f["name"] for f in target_describe}
-                invalid_fields = [f for f in target_fields if f not in valid_field_names]
+                target_valid_fields = {f["name"] for f in target_describe}
+                external_id_available = bool(
+                    self.sf_external_id_field
+                    and self.sf_external_id_field in target_valid_fields
+                )
+                external_id_mapped = bool(
+                    self.sf_external_id_field
+                    and self.sf_external_id_field in self.mapping.values()
+                )
+
+                invalid_fields = [f for f in target_fields if f not in target_valid_fields]
                 if invalid_fields:
                     logger.warning(
                         "Removing %d fields not found on target '%s': %s",
@@ -594,23 +765,71 @@ class MigrationOrchestrator:
                         f"Skipping {len(invalid_fields)} fields not on target: "
                         f"{', '.join(invalid_fields[:5])}",
                     )
-                    target_fields = [f for f in target_fields if f in valid_field_names]
+                    target_fields = [f for f in target_fields if f in target_valid_fields]
             except Exception as exc:
                 logger.warning("Could not validate target fields: %s", exc)
 
-            # Fetch target records from SF
-            field_list = ",".join(target_fields)
-            soql = f"SELECT {field_list} FROM {self.tgt_table} ORDER BY Id"
-            target_records_list = self.tgt.query(soql)
-
-            # Build target_map keyed by external ID (for dedup) or Id
-            if self.sf_external_id_field:
-                # SN→SF or SF→SF with dedup via external ID
+            # Build target_map keyed by external ID (preferred), Name fallback, or Id.
+            # We only use external ID coalescing when the field exists on target and
+            # is actually mapped from source data.
+            if self.sf_external_id_field and external_id_available and external_id_mapped:
                 coalesce_target_field = self.sf_external_id_field
                 use_coalesce = True
+                src_field_for_coalesce = next(
+                    (s for s, t in self.mapping.items() if t == coalesce_target_field),
+                    "",
+                )
+                key_values = {
+                    str(r.get(src_field_for_coalesce, "")).strip()
+                    for r in source_records
+                    if str(r.get(src_field_for_coalesce, "")).strip()
+                }
+                target_records_list = self._fetch_sf_target_by_key_values(
+                    object_name=self.tgt_table,
+                    fields=target_fields,
+                    key_field=coalesce_target_field,
+                    key_values=key_values,
+                )
+                logger.info(
+                    "Target fetch strategy: selective by %s (%d source keys).",
+                    coalesce_target_field,
+                    len(key_values),
+                )
+            elif "Name" in self.mapping.values() and (
+                (target_valid_fields is None) or ("Name" in target_valid_fields)
+            ):
+                coalesce_target_field = "Name"
+                use_coalesce = True
+                src_field_for_name = next(
+                    (s for s, t in self.mapping.items() if t == "Name"),
+                    "",
+                )
+                name_values = {
+                    str(r.get(src_field_for_name, "")).strip()
+                    for r in source_records
+                    if str(r.get(src_field_for_name, "")).strip()
+                }
+                target_records_list = self._fetch_sf_target_by_key_values(
+                    object_name=self.tgt_table,
+                    fields=target_fields,
+                    key_field="Name",
+                    key_values=name_values,
+                )
+                logger.warning(
+                    "External ID '%s' is unavailable or unmapped. "
+                    "Using Name-based selective matching (%d source names).",
+                    self.sf_external_id_field,
+                    len(name_values),
+                )
             else:
                 coalesce_target_field = "Id"
                 use_coalesce = False
+                field_list = ",".join(target_fields)
+                soql = f"SELECT {field_list} FROM {self.tgt_table} ORDER BY Id"
+                target_records_list = self.tgt.query(soql)
+                logger.warning(
+                    "No selective SF match key available. Falling back to full target scan."
+                )
         else:
             if "sys_id" not in target_fields:
                 target_fields.append("sys_id")
@@ -717,6 +936,11 @@ class MigrationOrchestrator:
         t0 = time.perf_counter()
 
         def _load_progress(processed, total, phase):
+            if self.pause_event:
+                if not self.pause_event.is_set():
+                    self._emit("paused", processed, total, "Migration paused by user. Click Resume to continue.")
+                    self.pause_event.wait()
+                    self._emit("resuming", processed, total, "Resuming migration...")
             self._emit("load", processed, total, f"{phase}: {processed:,}/{total:,}")
 
         if self._is_target_sf:

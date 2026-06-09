@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% set current_step = 4 %}
+
+{% block title %}Confirm Migration{% endblock %}
+{% block page_title %}Confirm Migration{% endblock %}
+{% block breadcrumb %}
+    <span>New Migration</span>
+    <span class="page-header__breadcrumb-sep">›</span>
+    <span>Step 4 of 4: Confirm</span>
+{% endblock %}
+
+{% block content %}
+
+{# ── Wizard Flow Bar ─────────────────────────────────────── #}
+<div class="wizard-flow-bar">
+    <div class="wizard-flow-step wizard-flow-step--done">
+        <div class="wizard-flow-step__num">1</div>
+        <span class="wizard-flow-step__label">Connect</span>
+    </div>
+    <div class="wizard-flow-connector wizard-flow-connector--active"></div>
+    <div class="wizard-flow-step wizard-flow-step--done">
+        <div class="wizard-flow-step__num">2</div>
+        <span class="wizard-flow-step__label">Select Tables</span>
+    </div>
+    <div class="wizard-flow-connector wizard-flow-connector--active"></div>
+    <div class="wizard-flow-step wizard-flow-step--done">
+        <div class="wizard-flow-step__num">3</div>
+        <span class="wizard-flow-step__label">Map Fields</span>
+    </div>
+    <div class="wizard-flow-connector wizard-flow-connector--active"></div>
+    <div class="wizard-flow-step wizard-flow-step--active">
+        <div class="wizard-flow-step__num">4</div>
+        <span class="wizard-flow-step__label">Confirm</span>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:1.5rem;">
+    <div class="card__header">
+        <div>
+            <div class="card__title">Migration Summary</div>
+            <div class="card__subtitle">Please review the configuration details before starting the migration process.</div>
+        </div>
+    </div>
+    
+    <div style="display:flex; flex-direction:column; gap:1.25rem; margin-top:0.5rem;">
+        
+        <!-- Connections summary -->
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1.5rem; flex-wrap:wrap;">
+            <!-- Source -->
+            <div style="background:var(--surface-3); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); padding:1rem;">
+                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.6rem;">
+                    <div class="panel-badge panel-badge--source" style="width:20px; height:20px; font-size:0.65rem;">S</div>
+                    <span style="font-size:0.75rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Source Connection</span>
+                </div>
+                <div style="font-weight:600; font-size:1rem; color:var(--text-primary);">{{ source_table }}</div>
+                <div style="font-size:0.8rem; color:var(--text-muted); margin-top:0.25rem;">Instance/User: {{ source_info }}</div>
+            </div>
+            
+            <!-- Target -->
+            <div style="background:var(--surface-3); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); padding:1rem;">
+                <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.6rem;">
+                    <div class="panel-badge panel-badge--target" style="width:20px; height:20px; font-size:0.65rem;">T</div>
+                    <span style="font-size:0.75rem; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Target Connection</span>
+                </div>
+                <div style="font-weight:600; font-size:1rem; color:var(--text-primary);">{{ target_table }}</div>
+                <div style="font-size:0.8rem; color:var(--text-muted); margin-top:0.25rem;">Instance/User: {{ target_info }}</div>
+            </div>
+        </div>
+
+        <!-- Details list -->
+        <div style="background:var(--surface-3); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); padding:1rem 1.25rem;">
+            <div style="display:flex; justify-content:space-between; padding:0.6rem 0; border-bottom:1px solid var(--border-hairline);">
+                <span style="color:var(--text-muted); font-size:0.85rem;">Migration Type</span>
+                <span style="color:var(--cyan); font-weight:600; font-size:0.85rem;">{{ migration_type.replace('_', ' \u2794 ').upper() }}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:0.6rem 0; border-bottom:1px solid var(--border-hairline);">
+                <span style="color:var(--text-muted); font-size:0.85rem;">Fetch Mode</span>
+                <span style="color:var(--text-primary); font-weight:600; font-size:0.85rem;">{{ fetch_mode.upper() }}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:0.6rem 0; border-bottom:1px solid var(--border-hairline);">
+                <span style="color:var(--text-muted); font-size:0.85rem;">Field Mappings Count</span>
+                <span style="color:var(--text-primary); font-weight:600; font-size:0.85rem;">{{ field_count }} field(s) mapped</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:0.6rem 0; align-items: flex-start;">
+                <span style="color:var(--text-muted); font-size:0.85rem;">Filter Conditions</span>
+                <span style="color:var(--text-primary); font-weight:600; font-size:0.85rem; text-align:right;">
+                    {% if filter_conditions and filter_conditions[0] %}
+                        {% set total_conds = filter_conditions | map('length') | sum %}
+                        {{ total_conds }} condition(s) in {{ filter_conditions | length }} OR group(s)
+                    {% else %}
+                        All records (no filters)
+                    {% endif %}
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<form method="POST" action="{{ url_for('migrate_confirm') }}" id="confirmForm">
+    <div class="btn-row">
+        <a href="{{ url_for('connect_page') }}" class="btn btn-secondary">← Back to Connections</a>
+        <button type="submit" class="btn btn-success btn-lg" id="btnStartMigration">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" style="width:16px;height:16px;">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
+            </svg>
+            Start Migration
+        </button>
+    </div>
+</form>
+
+{% endblock %}

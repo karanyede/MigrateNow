@@ -8,7 +8,34 @@
         content="MigrateNow — Enterprise-grade data migration between ServiceNow and Salesforce with field mapping, batch operations, and real-time progress.">
     <title>{% block title %}MigrateNow{% endblock %} — Enterprise Data Migration</title>
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/MigrateNow_Favicon.png') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=4">
+    <script>
+        (function() {
+            try {
+                const collapsed = localStorage.getItem('mn-sidebar') === 'collapsed';
+                if (collapsed) {
+                    document.documentElement.setAttribute('data-sidebar', 'collapsed');
+                    // Inject a <style> block immediately to prevent layout flash.
+                    // CSS attribute selectors won't apply until the stylesheet is parsed,
+                    // but an injected <style> is applied synchronously before first paint.
+                    var s = document.createElement('style');
+                    s.id = 'mn-sidebar-fouc';
+                    s.textContent = [
+                        '.sidebar { width: 64px !important; }',
+                        '.main-area { margin-left: 64px !important; }',
+                        '.sidebar-toggle { left: calc(64px - 12px) !important; }',
+                        '.sidebar-toggle svg { transform: rotate(180deg) !important; }',
+                        '.sidebar-item__label, .sidebar-section-label, .sidebar-footer,',
+                        '.sidebar-migration-section, .sidebar-logo__text,',
+                        '.sidebar-logo .logo-full { display: none !important; }',
+                        '.sidebar-logo .logo-icon { display: block !important; }',
+                        '.sidebar-item { justify-content: center !important; padding: 0.65rem !important; }',
+                    ].join('\n');
+                    document.head.appendChild(s);
+                }
+            } catch(e) {}
+        })();
+    </script>
     {% block head %}{% endblock %}
 </head>
 
@@ -20,14 +47,20 @@
 
         <!-- ══════════════════════════════════════════════════════
          SIDEBAR
-    ══════════════════════════════════════════════════════ -->
-        <nav class="sidebar" role="navigation" aria-label="Main navigation">
+     ══════════════════════════════════════════════════════ -->
+        <!-- Collapse Toggle Button (placed outside to avoid overflow:hidden clipping) -->
+        <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar" aria-label="Toggle sidebar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5"/>
+            </svg>
+        </button>
 
-            <!-- Logo — full-width, no separator -->
-            <a href="{{ url_for('home') }}" class="sidebar-logo" title="MigrateNow Home"
-                style="display:flex; align-items:center; justify-content:center; height:var(--header-h); padding:0 0.25rem; text-decoration:none; box-sizing:border-box;">
-                <img src="{{ url_for('static', filename='images/MigrateNow_Logo.png') }}" alt="MigrateNow"
-                    style="width:100%; max-width:225px; height:auto; object-fit:contain; display:block;">
+        <nav class="sidebar" id="appSidebar" role="navigation" aria-label="Main navigation">
+
+            <!-- Logo -->
+            <a href="{{ url_for('home') }}" class="sidebar-logo" title="MigrateNow Home">
+                <img src="{{ url_for('static', filename='images/MigrateNow_Logo.png') }}" alt="MigrateNow" class="logo-full">
+                <img src="{{ url_for('static', filename='images/MigrateNow_Favicon.png') }}" alt="MigrateNow" class="logo-icon">
             </a>
 
             <!-- Navigation -->
@@ -35,7 +68,9 @@
                 <div class="sidebar-section-label">Workspace</div>
 
                 <a href="{{ url_for('home') }}"
-                    class="sidebar-item {% if request.endpoint == 'home' %}active{% endif %}" id="nav-dashboard">
+                    class="sidebar-item {% if request.endpoint == 'home' %}active{% endif %}"
+                    id="nav-dashboard"
+                    data-tooltip="Dashboard">
                     <svg class="sidebar-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="1.75">
                         <path stroke-linecap="round" stroke-linejoin="round"
@@ -46,7 +81,8 @@
 
                 <a href="{{ url_for('connect_page') }}"
                     class="sidebar-item {% if request.endpoint in ['connect_page', 'connect'] %}active{% endif %}"
-                    id="nav-new-migration">
+                    id="nav-new-migration"
+                    data-tooltip="New Migration">
                     <svg class="sidebar-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="1.75">
                         <path stroke-linecap="round" stroke-linejoin="round"
@@ -57,7 +93,8 @@
 
                 <a href="{{ url_for('connections_page') }}"
                     class="sidebar-item {% if request.endpoint in ['connections_page', 'connections_save', 'connections_delete'] %}active{% endif %}"
-                    id="nav-connections">
+                    id="nav-connections"
+                    data-tooltip="Connections">
                     <svg class="sidebar-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="1.75">
                         <path stroke-linecap="round" stroke-linejoin="round"
@@ -68,7 +105,8 @@
 
                 <a href="{{ url_for('history') }}"
                     class="sidebar-item {% if request.endpoint in ['history', 'history_detail'] %}active{% endif %}"
-                    id="nav-history">
+                    id="nav-history"
+                    data-tooltip="History">
                     <svg class="sidebar-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="1.75">
                         <path stroke-linecap="round" stroke-linejoin="round"
@@ -87,7 +125,7 @@
 
         <!-- ══════════════════════════════════════════════════════
          MAIN AREA
-    ══════════════════════════════════════════════════════ -->
+     ══════════════════════════════════════════════════════ -->
         <div class="main-area">
 
             <!-- Page Header -->
@@ -100,7 +138,7 @@
                         {% block breadcrumb %}<span>Dashboard</span>{% endblock %}
                     </div>
                 </div>
-                <div class="page-header__right">
+                <div class="page-header__right" style="display:flex;align-items:center;gap:0.75rem;">
                     {% block header_actions %}{% endblock %}
                 </div>
             </header>

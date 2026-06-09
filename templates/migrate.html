@@ -1,433 +1,1145 @@
-{% extends "base.html" %}
-{% set current_step = 4 %}
-
-{% block title %}Migration in Progress{% endblock %}
-{% block page_title %}Migration{% endblock %}
-{% block breadcrumb %}
-    <span>New Migration</span>
-    <span class="page-header__breadcrumb-sep">›</span>
-    <span>Step 4: Running</span>
-{% endblock %}
-
-{% block content %}
-
-{# ── Rocket Launch Overlay ───────────────────────────────── #}
+{% extends "base.html" %} {% set current_step = 4 %} {% block title %}Migration
+in Progress{% endblock %} {% block page_title %}Migration{% endblock %} {% block
+breadcrumb %}
+<span>New Migration</span>
+<span class="page-header__breadcrumb-sep">›</span>
+<span>Step 4: Running</span>
+{% endblock %} {% block content %} {# ── Rocket Launch Overlay
+───────────────────────────────── #}
 <div class="rocket-overlay" id="rocketOverlay">
-    <div class="rocket-scene">
-        <!-- Stars -->
-        <div class="rocket-stars">
-            <div class="rocket-star" style="top: 20%; left: 30%; --dur: 1.2s; --delay: 0.1s;"></div>
-            <div class="rocket-star" style="top: 15%; left: 75%; --dur: 1.8s; --delay: 0.4s;"></div>
-            <div class="rocket-star" style="top: 45%; left: 15%; --dur: 1.5s; --delay: 0.2s;"></div>
-            <div class="rocket-star" style="top: 60%; left: 80%; --dur: 2s; --delay: 0.5s;"></div>
-            <div class="rocket-star" style="top: 80%; left: 25%; --dur: 1.4s; --delay: 0.3s;"></div>
-        </div>
-        <!-- Rocket -->
-        <div class="rocket">🚀</div>
-        <!-- Exhaust -->
-        <div class="rocket-exhaust">
-            <div class="exhaust-particle"></div>
-            <div class="exhaust-particle"></div>
-            <div class="exhaust-particle"></div>
-        </div>
+  <div class="rocket-scene">
+    <!-- Stars -->
+    <div class="rocket-stars">
+      <div
+        class="rocket-star"
+        style="top: 20%; left: 30%; --dur: 1.2s; --delay: 0.1s"
+      ></div>
+      <div
+        class="rocket-star"
+        style="top: 15%; left: 75%; --dur: 1.8s; --delay: 0.4s"
+      ></div>
+      <div
+        class="rocket-star"
+        style="top: 45%; left: 15%; --dur: 1.5s; --delay: 0.2s"
+      ></div>
+      <div
+        class="rocket-star"
+        style="top: 60%; left: 80%; --dur: 2s; --delay: 0.5s"
+      ></div>
+      <div
+        class="rocket-star"
+        style="top: 80%; left: 25%; --dur: 1.4s; --delay: 0.3s"
+      ></div>
     </div>
-    <div class="rocket-title">MigrateNow Pipeline</div>
-    <div class="rocket-subtitle">Igniting engines &amp; setting up secure channels…</div>
+    <!-- Rocket -->
+    <div class="rocket">🚀</div>
+    <!-- Exhaust -->
+    <div class="rocket-exhaust">
+      <div class="exhaust-particle"></div>
+      <div class="exhaust-particle"></div>
+      <div class="exhaust-particle"></div>
+    </div>
+  </div>
+  <div class="rocket-title">MigrateNow Pipeline</div>
+  <div class="rocket-subtitle">
+    Igniting engines &amp; setting up secure channels…
+  </div>
 </div>
 
 <!-- ── Migration in Progress ─────────────────────────────── -->
 <div id="migrationRunning">
-    
-    <!-- Unified Top Header + Loading Animation Card -->
-    <div class="card" style="display:flex; justify-content:space-between; align-items:center; gap:2rem; flex-wrap:wrap; margin-bottom:1.25rem; padding:1.25rem 2rem;">
-        
-        <!-- Left: Header Details -->
-        <div>
-            <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.6rem;">
-                <div style="width:8px;height:8px;border-radius:50%;background:var(--violet);animation:pulseDot 1.5s ease-in-out infinite;"></div>
-                <div class="card__title" id="migrationTitle" style="margin:0; font-size:1.1rem;">Migration in Progress</div>
-            </div>
-            <div class="card__subtitle" style="margin-bottom:0; font-size:0.82rem;">
-                Migrating
-                <strong style="color:var(--cyan);">{{ source_table }}</strong>
-                →
-                <strong style="color:var(--emerald);">{{ target_table }}</strong>
-            </div>
+  <!-- Unified Top Header + Loading Animation Card -->
+  <div
+    class="card"
+    style="
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 2rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.25rem;
+      padding: 1.25rem 2rem;
+    "
+  >
+    <!-- Left: Header Details -->
+    <div>
+      <div
+        style="
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          margin-bottom: 0.6rem;
+        "
+      >
+        <div
+          style="
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--violet);
+            animation: pulseDot 1.5s ease-in-out infinite;
+          "
+        ></div>
+        <div
+          class="card__title"
+          id="migrationTitle"
+          style="margin: 0; font-size: 1.1rem"
+        >
+          Migration in Progress
         </div>
-
-        <!-- Right: Combined Loading Ring/Bar -->
-        <div style="display:flex; align-items:center; gap:1.75rem;">
-            <!-- Circular Progress Ring (Smaller 100px size for compact unified header) -->
-            <div class="progress-ring" id="progressRingWrap" style="width:100px; height:100px; margin:0;">
-                <svg viewBox="0 0 160 160" width="100" height="100">
-                    <circle class="progress-ring__track" cx="80" cy="80" r="70" stroke-width="14"/>
-                    <circle class="progress-ring__fill" cx="80" cy="80" r="70" id="progressRingFill" stroke-width="14"/>
-                </svg>
-                <div class="progress-ring__text" style="font-size:0.6rem;">
-                    <div class="progress-ring__pct" id="progressPct" style="font-size:1.15rem; font-weight:800;">0%</div>
-                    <div class="progress-ring__phase" id="progressPhase" style="font-size:0.5rem; text-transform:uppercase; letter-spacing:0.05em;">Init</div>
-                </div>
-            </div>
-
-            <!-- Progress Details + Bar -->
-            <div style="width:220px; display:flex; flex-direction:column; gap:0.4rem;">
-                <div class="progress-bar-wrap" style="height:6px; background:rgba(255,255,255,0.06); border-radius:100px; overflow:hidden;">
-                    <div class="progress-bar-fill" id="progressBar" style="width:0%; height:100%; background:var(--grad-brand); transition:width 0.4s ease;"></div>
-                </div>
-                <div class="progress-detail" id="progressDetail" style="font-size:0.75rem; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Preparing pipeline…</div>
-            </div>
-        </div>
+      </div>
+      <div class="card__subtitle" style="margin-bottom: 0; font-size: 0.82rem">
+        Migrating
+        <strong style="color: var(--cyan)">{{ source_table }}</strong>
+        →
+        <strong style="color: var(--emerald)">{{ target_table }}</strong>
+      </div>
     </div>
 
-    <!-- Side-by-Side Pipeline & Logs Grid -->
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.25rem;">
-        
-        <!-- LEFT: Execution Pipeline -->
-        <div class="card" style="margin-bottom:0; min-height:360px;">
-            <div class="card__title" style="margin-bottom:1rem; font-size:0.88rem; display:flex; align-items:center; gap:0.4rem;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--violet);">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 12h16.5m-16.5 3h16.5M3.75 9h16.5m-16.5 6h16.5" />
-                </svg>
-                Pipeline Steps
-            </div>
-            
-            <div class="pipeline-steps" id="pipelineSteps">
-                <div class="pipeline-step" id="step-fetch_source" data-phase="fetch_source">
-                    <div class="pipeline-step__dot">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/>
-                        </svg>
-                    </div>
-                    <div class="pipeline-step__body">
-                        <div class="pipeline-step__name">Fetch Source Records</div>
-                        <div class="pipeline-step__detail" id="detail-fetch_source">Waiting…</div>
-                    </div>
-                </div>
-
-                <div class="pipeline-step" id="step-fetch_target" data-phase="fetch_target">
-                    <div class="pipeline-step__dot">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 2.5c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"/>
-                        </svg>
-                    </div>
-                    <div class="pipeline-step__body">
-                        <div class="pipeline-step__name">Fetch Target Records</div>
-                        <div class="pipeline-step__detail" id="detail-fetch_target">Waiting…</div>
-                    </div>
-                </div>
-
-                <div class="pipeline-step" id="step-diff" data-phase="diff">
-                    <div class="pipeline-step__dot">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"/>
-                        </svg>
-                    </div>
-                    <div class="pipeline-step__body">
-                        <div class="pipeline-step__name">Compute Diff</div>
-                        <div class="pipeline-step__detail" id="detail-diff">Waiting…</div>
-                    </div>
-                </div>
-
-                <div class="pipeline-step" id="step-load" data-phase="load">
-                    <div class="pipeline-step__dot">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"/>
-                        </svg>
-                    </div>
-                    <div class="pipeline-step__body">
-                        <div class="pipeline-step__name">Load Records</div>
-                        <div class="pipeline-step__detail" id="detail-load">Waiting…</div>
-                    </div>
-                </div>
-
-                <div class="pipeline-step" id="step-done" data-phase="done">
-                    <div class="pipeline-step__dot">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
-                        </svg>
-                    </div>
-                    <div class="pipeline-step__body">
-                        <div class="pipeline-step__name">Complete</div>
-                        <div class="pipeline-step__detail" id="detail-done">Waiting…</div>
-                    </div>
-                </div>
-            </div>
+    <!-- Right: Combined Loading Ring/Bar -->
+    <div style="display: flex; align-items: center; gap: 1.75rem">
+      <!-- Circular Progress Ring (Smaller 100px size for compact unified header) -->
+      <div
+        class="progress-ring"
+        id="progressRingWrap"
+        style="width: 100px; height: 100px; margin: 0"
+      >
+        <svg viewBox="0 0 160 160" width="100" height="100">
+          <circle
+            class="progress-ring__track"
+            cx="80"
+            cy="80"
+            r="70"
+            stroke-width="14"
+          />
+          <circle
+            class="progress-ring__fill"
+            cx="80"
+            cy="80"
+            r="70"
+            id="progressRingFill"
+            stroke-width="14"
+          />
+        </svg>
+        <div class="progress-ring__text">
+          <div
+            class="progress-ring__pct"
+            id="progressPct"
+            style="font-size: 1.45rem; font-weight: 800"
+          >
+            0%
+          </div>
         </div>
+      </div>
 
-        <!-- RIGHT: Live Console Log -->
-        <div class="card" style="margin-bottom:0; display:flex; flex-direction:column; min-height:360px;">
-            <div class="card__title" style="margin-bottom:0.75rem; font-size:0.88rem; display:flex; align-items:center; gap:0.4rem;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--cyan);">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5"/>
-                </svg>
-                Console Logs
-            </div>
-            
-            <div class="log-console" id="logConsole" style="flex:1; min-height:0; overflow-y:auto; font-family:'JetBrains Mono', monospace; font-size:0.75rem; background:rgba(0,0,0,0.2); border:1px solid var(--border-subtle); padding:0.75rem; border-radius:var(--radius-sm); margin-top:0.25rem;">
-                <div class="log-line log-line--info">▸ Migration started…</div>
-            </div>
+      <!-- Progress Details + Bar -->
+      <div
+        style="width: 220px; display: flex; flex-direction: column; gap: 0.4rem"
+      >
+        <div
+          class="progress-bar-wrap"
+          style="
+            height: 6px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 100px;
+            overflow: hidden;
+          "
+        >
+          <div
+            class="progress-bar-fill"
+            id="progressBar"
+            style="
+              width: 0%;
+              height: 100%;
+              background: var(--grad-brand);
+              transition: width 0.4s ease;
+            "
+          ></div>
         </div>
+        <div
+          class="progress-detail"
+          id="progressDetail"
+          style="
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          "
+        >
+          Preparing pipeline…
+        </div>
+        <div
+          id="migrationControls"
+          style="
+            display: none;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 0.25rem;
+          "
+        >
+          <button
+            type="button"
+            id="btnPause"
+            class="btn btn-secondary btn-sm"
+            style="
+              font-size: 0.7rem;
+              padding: 0.25rem 0.6rem;
+              border: 1px solid var(--border-moderate);
+              display: flex;
+              align-items: center;
+              gap: 4px;
+              height: 24px;
+              cursor: pointer;
+            "
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              style="width: 10px; height: 10px"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M6.75 5.25a.75.75 0 0 1 .75-.75H9a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H7.5a.75.75 0 0 1-.75-.75V5.25Zm7.5 0A.75.75 0 0 1 15 4.5h1.5a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H15a.75.75 0 0 1-.75-.75V5.25Z"
+                clip-rule="evenodd"
+              />
+            </svg>
+            Pause
+          </button>
+          <button
+            type="button"
+            id="btnResume"
+            class="btn btn-primary btn-sm"
+            style="
+              font-size: 0.7rem;
+              padding: 0.25rem 0.6rem;
+              display: none;
+              align-items: center;
+              gap: 4px;
+              height: 24px;
+              cursor: pointer;
+            "
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              style="width: 10px; height: 10px"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653Z"
+                clip-rule="evenodd"
+              />
+            </svg>
+            Resume
+          </button>
+          <span
+            id="pauseStatusLabel"
+            style="font-size: 0.7rem; color: var(--text-muted); display: none"
+            >Paused</span
+          >
+        </div>
+      </div>
     </div>
+  </div>
+
+  <!-- Paused Banner -->
+  <div
+    id="pausedBanner"
+    class="card"
+    style="
+      display: none;
+      border-color: var(--amber);
+      background: rgba(217, 119, 6, 0.06);
+      padding: 0.75rem 1.25rem;
+      margin-bottom: 1.25rem;
+      align-items: center;
+      gap: 0.75rem;
+    "
+  >
+    <div
+      style="
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: rgba(217, 119, 6, 0.15);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--amber);
+        flex-shrink: 0;
+      "
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        style="width: 12px; height: 12px"
+      >
+        <path
+          fill-rule="evenodd"
+          d="M6.75 5.25a.75.75 0 0 1 .75-.75H9a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H7.5a.75.75 0 0 1-.75-.75V5.25Zm7.5 0A.75.75 0 0 1 15 4.5h1.5a.75.75 0 0 1 .75.75v13.5a.75.75 0 0 1-.75.75H15a.75.75 0 0 1-.75-.75V5.25Z"
+          clip-rule="evenodd"
+        />
+      </svg>
+    </div>
+    <div style="font-size: 0.82rem; color: var(--text-primary); flex: 1">
+      <strong>Migration Paused:</strong> Writing to target is paused. You can
+      safely resume when ready.
+    </div>
+  </div>
+
+  <!-- Side-by-Side Pipeline & Logs Grid -->
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem">
+    <!-- LEFT: Execution Pipeline -->
+    <div class="card" style="margin-bottom: 0; min-height: 360px">
+      <div
+        class="card__title"
+        style="
+          margin-bottom: 1rem;
+          font-size: 0.88rem;
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+        "
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          style="width: 14px; height: 14px; color: var(--violet)"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M3.75 12h16.5m-16.5 3h16.5M3.75 9h16.5m-16.5 6h16.5"
+          />
+        </svg>
+        Pipeline Steps
+      </div>
+
+      <div class="pipeline-steps" id="pipelineSteps">
+        <div
+          class="pipeline-step"
+          id="step-fetch_source"
+          data-phase="fetch_source"
+        >
+          <div class="pipeline-step__dot">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"
+              />
+            </svg>
+          </div>
+          <div class="pipeline-step__body">
+            <div class="pipeline-step__name">Fetch Source Records</div>
+            <div class="pipeline-step__detail" id="detail-fetch_source">
+              Waiting…
+            </div>
+          </div>
+        </div>
+
+        <div
+          class="pipeline-step"
+          id="step-fetch_target"
+          data-phase="fetch_target"
+        >
+          <div class="pipeline-step__dot">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 2.5c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125"
+              />
+            </svg>
+          </div>
+          <div class="pipeline-step__body">
+            <div class="pipeline-step__name">Fetch Target Records</div>
+            <div class="pipeline-step__detail" id="detail-fetch_target">
+              Waiting…
+            </div>
+          </div>
+        </div>
+
+        <div class="pipeline-step" id="step-diff" data-phase="diff">
+          <div class="pipeline-step__dot">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"
+              />
+            </svg>
+          </div>
+          <div class="pipeline-step__body">
+            <div class="pipeline-step__name">Compute Diff</div>
+            <div class="pipeline-step__detail" id="detail-diff">Waiting…</div>
+          </div>
+        </div>
+
+        <div class="pipeline-step" id="step-load" data-phase="load">
+          <div class="pipeline-step__dot">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"
+              />
+            </svg>
+          </div>
+          <div class="pipeline-step__body">
+            <div class="pipeline-step__name">Load Records</div>
+            <div class="pipeline-step__detail" id="detail-load">Waiting…</div>
+          </div>
+        </div>
+
+        <div class="pipeline-step" id="step-done" data-phase="done">
+          <div class="pipeline-step__dot">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+              />
+            </svg>
+          </div>
+          <div class="pipeline-step__body">
+            <div class="pipeline-step__name">Complete</div>
+            <div class="pipeline-step__detail" id="detail-done">Waiting…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Live Console Log -->
+    <div
+      class="card"
+      style="
+        margin-bottom: 0;
+        display: flex;
+        flex-direction: column;
+        min-height: 360px;
+      "
+    >
+      <div
+        class="card__title"
+        style="
+          margin-bottom: 0.75rem;
+          font-size: 0.88rem;
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+        "
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          style="width: 14px; height: 14px; color: var(--cyan)"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5"
+          />
+        </svg>
+        Console Logs
+      </div>
+
+      <div
+        class="log-console"
+        id="logConsole"
+        style="
+          flex: 1;
+          min-height: 0;
+          overflow-y: auto;
+          font-family: &quot;JetBrains Mono&quot;, monospace;
+          font-size: 0.75rem;
+          background: rgba(0, 0, 0, 0.2);
+          border: 1px solid var(--border-subtle);
+          padding: 0.75rem;
+          border-radius: var(--radius-sm);
+          margin-top: 0.25rem;
+        "
+      >
+        <div class="log-line log-line--info">▸ Migration started…</div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ══════════════════════════════════════════════════════
      RESULTS (hidden until complete)
 ══════════════════════════════════════════════════════ -->
-<div id="resultsSection" style="display:none;">
-
-    <!-- Result header card -->
-    <div class="card" style="border-color:rgba(16,185,129,0.25); background:rgba(16,185,129,0.04);">
-        <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.5rem;">
-            <div style="width:36px;height:36px;border-radius:10px;background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);display:flex;align-items:center;justify-content:center;color:var(--emerald);">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/>
-                </svg>
-            </div>
-            <div class="card__title" style="margin:0; font-size:1.1rem;">Migration Complete</div>
-        </div>
-        <div class="card__subtitle" id="resultSubtitle" style="margin:0;"></div>
+<div id="resultsSection" style="display: none">
+  <!-- Result header card -->
+  <div
+    class="card"
+    style="
+      border-color: rgba(16, 185, 129, 0.25);
+      background: rgba(16, 185, 129, 0.04);
+    "
+  >
+    <div
+      style="
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 0.5rem;
+      "
+    >
+      <div
+        style="
+          width: 36px;
+          height: 36px;
+          border-radius: 10px;
+          background: rgba(16, 185, 129, 0.15);
+          border: 1px solid rgba(16, 185, 129, 0.3);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--emerald);
+        "
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+          style="width: 18px; height: 18px"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="m4.5 12.75 6 6 9-13.5"
+          />
+        </svg>
+      </div>
+      <div class="card__title" style="margin: 0; font-size: 1.1rem">
+        Migration Complete
+      </div>
     </div>
+    <div class="card__subtitle" id="resultSubtitle" style="margin: 0"></div>
+  </div>
 
-    <!-- Stats grid -->
-    <div class="card">
-        <div class="card__title" style="margin-bottom:1rem;">Results Summary</div>
-        <div class="results-grid" id="resultsGrid"></div>
-    </div>
+  <!-- Stats grid -->
+  <div class="card">
+    <div class="card__title" style="margin-bottom: 1rem">Results Summary</div>
+    <div class="results-grid" id="resultsGrid"></div>
+  </div>
 
-    <!-- Timing + API in two cols -->
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.25rem;">
-        <div class="card" style="margin-bottom:0;">
-            <div class="card__title" style="margin-bottom:0.75rem;">Timing Breakdown</div>
-            <table class="timing-table" id="timingTable"><tbody></tbody></table>
-        </div>
-        <div class="card" style="margin-bottom:0;">
-            <div class="card__title" style="margin-bottom:0.75rem;">API Call Summary</div>
-            <div class="api-summary" id="apiSummary"></div>
-        </div>
+  <!-- Timing + API in two cols -->
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem">
+    <div class="card" style="margin-bottom: 0">
+      <div class="card__title" style="margin-bottom: 0.75rem">
+        Timing Breakdown
+      </div>
+      <table class="timing-table" id="timingTable">
+        <tbody></tbody>
+      </table>
     </div>
+    <div class="card" style="margin-bottom: 0">
+      <div class="card__title" style="margin-bottom: 0.75rem">
+        API Call Summary
+      </div>
+      <div class="api-summary" id="apiSummary"></div>
+    </div>
+  </div>
 
-    <div class="btn-row" style="margin-top:1.5rem;">
-        <a href="{{ url_for('history') }}" class="btn btn-secondary">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="width:15px;height:15px;">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
-            </svg>
-            View History
-        </a>
-        <a href="{{ url_for('home') }}" class="btn btn-primary btn-lg">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
-            </svg>
-            New Migration
-        </a>
-    </div>
+  <div class="btn-row" style="margin-top: 1.5rem">
+    <button
+      type="button"
+      id="btnExportHtml"
+      class="btn btn-secondary"
+      style="display: flex; align-items: center; gap: 6px; cursor: pointer"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        style="width: 15px; height: 15px"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m.75 12 3 3m0 0 3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
+        />
+      </svg>
+      Export Report
+    </button>
+    <button
+      type="button"
+      id="btnExportCsv"
+      class="btn btn-secondary"
+      style="display: flex; align-items: center; gap: 6px; cursor: pointer"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        style="width: 15px; height: 15px"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 0 1-1.125-1.125V5.625c0-.621.504-1.125 1.125-1.125h17.25c.621 0 1.125.504 1.125 1.125v12.75c0 .621-.504 1.125-1.125 1.125m-17.25 0V9h17.25m-16.5 5.25h.008v.008H3.75v-.008Zm0 3h.008v.008H3.75v-.008Z"
+        />
+      </svg>
+      Export CSV
+    </button>
+    <a
+      href="{{ url_for('history') }}"
+      class="btn btn-secondary"
+      style="display: flex; align-items: center; gap: 6px"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        style="width: 15px; height: 15px"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+        />
+      </svg>
+      View History
+    </a>
+    <a
+      href="{{ url_for('home') }}"
+      class="btn btn-primary btn-lg"
+      style="display: flex; align-items: center; gap: 6px"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        style="width: 15px; height: 15px"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M12 4.5v15m7.5-7.5h-15"
+        />
+      </svg>
+      New Migration
+    </a>
+  </div>
 </div>
 
-{% endblock %}
-
-{% block scripts %}
+{% endblock %} {% block scripts %}
 <script>
-(function() {
+  (function () {
     // ── Rocket Launch Fade Out ─────────────────────────────
-    const overlay = document.getElementById('rocketOverlay');
+    const overlay = document.getElementById("rocketOverlay");
     if (overlay) {
+      setTimeout(() => {
+        overlay.style.animation = "rocketOverlayOut 0.5s ease both";
         setTimeout(() => {
-            overlay.style.animation = 'rocketOverlayOut 0.5s ease both';
-            setTimeout(() => {
-                overlay.classList.add('hidden');
-            }, 500);
-        }, 2200);
+          overlay.classList.add("hidden");
+        }, 500);
+      }, 2200);
     }
 
     const CIRCUMFERENCE = 2 * Math.PI * 70; // r=70
-    const ringFill   = document.getElementById('progressRingFill');
-    const pctLabel   = document.getElementById('progressPct');
-    const phaseLabel = document.getElementById('progressPhase');
-    const barFill    = document.getElementById('progressBar');
-    const detailEl   = document.getElementById('progressDetail');
-    const logConsole = document.getElementById('logConsole');
+    const ringFill = document.getElementById("progressRingFill");
+    const pctLabel = document.getElementById("progressPct");
+    const phaseLabel = document.getElementById("progressPhase");
+    const barFill = document.getElementById("progressBar");
+    const detailEl = document.getElementById("progressDetail");
+    const logConsole = document.getElementById("logConsole");
 
     // Set ring circumference
     ringFill.style.strokeDasharray = CIRCUMFERENCE;
     ringFill.style.strokeDashoffset = CIRCUMFERENCE;
 
     const phaseLabels = {
-        'fetch_source': 'Fetching Source',
-        'fetch_target': 'Fetching Target',
-        'diff':         'Computing Diff',
-        'load':         'Loading Records',
-        'done':         'Complete'
+      fetch_source: "Fetching Source",
+      fetch_target: "Fetching Target",
+      diff: "Computing Diff",
+      load: "Loading Records",
+      done: "Complete",
     };
 
     // Phase ordering for pipeline
-    const phaseOrder = ['fetch_source', 'fetch_target', 'diff', 'load', 'done'];
+    const phaseOrder = ["fetch_source", "fetch_target", "diff", "load", "done"];
     let currentPhaseIdx = -1;
 
     function setRingProgress(pct) {
-        const offset = CIRCUMFERENCE - (pct / 100) * CIRCUMFERENCE;
-        ringFill.style.strokeDashoffset = offset;
-        pctLabel.textContent = pct + '%';
-        barFill.style.width = pct + '%';
+      const offset = CIRCUMFERENCE - (pct / 100) * CIRCUMFERENCE;
+      ringFill.style.strokeDashoffset = offset;
+      pctLabel.textContent = pct + "%";
+      barFill.style.width = pct + "%";
     }
 
     function updatePipeline(phase, detail) {
-        const idx = phaseOrder.indexOf(phase);
-        if (idx === -1) return;
+      const idx = phaseOrder.indexOf(phase);
+      if (idx === -1) return;
 
-        phaseOrder.forEach((p, i) => {
-            const stepEl = document.getElementById('step-' + p);
-            const detEl  = document.getElementById('detail-' + p);
-            if (!stepEl) return;
-            stepEl.classList.remove('step--active', 'step--done');
-            if (i < idx) {
-                stepEl.classList.add('step--done');
-                if (detEl) detEl.textContent = 'Done';
-            } else if (i === idx) {
-                stepEl.classList.add('step--active');
-                if (detEl && detail) detEl.textContent = detail;
-            }
-        });
+      phaseOrder.forEach((p, i) => {
+        const stepEl = document.getElementById("step-" + p);
+        const detEl = document.getElementById("detail-" + p);
+        if (!stepEl) return;
+        stepEl.classList.remove("step--active", "step--done");
+        if (i < idx) {
+          stepEl.classList.add("step--done");
+          if (detEl) detEl.textContent = "Done";
+        } else if (i === idx) {
+          stepEl.classList.add("step--active");
+          if (detEl && detail) detEl.textContent = detail;
+        }
+      });
 
-        currentPhaseIdx = idx;
+      currentPhaseIdx = idx;
     }
 
     function addLog(msg, level) {
-        const div = document.createElement('div');
-        div.className = 'log-line log-line--' + (level || 'info');
-        div.textContent = '▸ ' + msg;
-        logConsole.appendChild(div);
-        logConsole.scrollTop = logConsole.scrollHeight;
+      const div = document.createElement("div");
+      div.className = "log-line log-line--" + (level || "info");
+      div.textContent = "▸ " + msg;
+      logConsole.appendChild(div);
+      logConsole.scrollTop = logConsole.scrollHeight;
+    }
+
+    const btnPause = document.getElementById("btnPause");
+    const btnResume = document.getElementById("btnResume");
+    const controls = document.getElementById("migrationControls");
+    const pausedBanner = document.getElementById("pausedBanner");
+    const pauseStatusLabel = document.getElementById("pauseStatusLabel");
+
+    if (btnPause && btnResume) {
+      btnPause.addEventListener("click", function () {
+        btnPause.disabled = true;
+        fetch("{{ url_for('migrate_pause') }}", { method: "POST" })
+          .then((res) => res.json())
+          .then((data) => {
+            btnPause.disabled = false;
+            btnPause.style.display = "none";
+            btnResume.style.display = "inline-flex";
+            pauseStatusLabel.style.display = "inline";
+          });
+      });
+
+      btnResume.addEventListener("click", function () {
+        btnResume.disabled = true;
+        fetch("{{ url_for('migrate_resume') }}", { method: "POST" })
+          .then((res) => res.json())
+          .then((data) => {
+            btnResume.disabled = false;
+            btnResume.style.display = "none";
+            btnPause.style.display = "inline-flex";
+            pauseStatusLabel.style.display = "none";
+          });
+      });
     }
 
     const evtSource = new EventSource("{{ url_for('migrate_stream') }}");
 
-    evtSource.addEventListener('progress', function(e) {
-        const d = JSON.parse(e.data);
-        const pct = d.total > 0 ? Math.round((d.processed / d.total) * 100) : 0;
+    evtSource.addEventListener("progress", function (e) {
+      const d = JSON.parse(e.data);
+      const pct = d.total > 0 ? Math.round((d.processed / d.total) * 100) : 0;
 
-        setRingProgress(pct);
-        phaseLabel.textContent = phaseLabels[d.phase] || d.phase;
-        if (d.detail) detailEl.textContent = d.detail;
+      setRingProgress(pct);
+      if (phaseLabel) phaseLabel.textContent = phaseLabels[d.phase] || d.phase;
+      if (d.detail) detailEl.textContent = d.detail;
 
-        updatePipeline(d.phase, d.detail || '');
+      updatePipeline(d.phase, d.detail || "");
 
-        if (d.detail) addLog(d.detail, 'info');
+      if (d.phase === "load") {
+        if (controls) controls.style.display = "flex";
+      } else {
+        if (controls) controls.style.display = "none";
+      }
+
+      if (d.detail) addLog(d.detail, "info");
     });
 
-    evtSource.addEventListener('complete', function(e) {
-        evtSource.close();
-        const report = JSON.parse(e.data);
-
-        // Mark all steps done
-        phaseOrder.forEach(p => {
-            const stepEl = document.getElementById('step-' + p);
-            if (stepEl) {
-                stepEl.classList.remove('step--active');
-                stepEl.classList.add('step--done');
-            }
-            const detEl = document.getElementById('detail-' + p);
-            if (detEl) detEl.textContent = 'Done';
-        });
-
-        setRingProgress(100);
-        phaseLabel.textContent = 'Complete';
-        addLog('Migration complete!', 'success');
-
-        setTimeout(() => showResults(report), 600);
+    evtSource.addEventListener("paused", function (e) {
+      if (pausedBanner) {
+        pausedBanner.style.display = "flex";
+        pausedBanner.style.animation = "fadeSlideIn 0.3s ease both";
+      }
+      if (btnPause) btnPause.style.display = "none";
+      if (btnResume) btnResume.style.display = "inline-flex";
+      if (pauseStatusLabel) pauseStatusLabel.style.display = "inline";
+      addLog("Migration paused.", "warn");
     });
 
-    evtSource.addEventListener('error_msg', function(e) {
-        const d = JSON.parse(e.data);
-        addLog('ERROR: ' + d.message, 'error');
+    evtSource.addEventListener("resuming", function (e) {
+      if (pausedBanner) pausedBanner.style.display = "none";
+      if (btnResume) btnResume.style.display = "none";
+      if (btnPause) btnPause.style.display = "inline-flex";
+      if (pauseStatusLabel) pauseStatusLabel.style.display = "none";
+      addLog("Migration resumed.", "info");
     });
 
-    evtSource.onerror = function() {
-        addLog('Connection lost — check server logs', 'error');
-        evtSource.close();
+    evtSource.addEventListener("complete", function (e) {
+      evtSource.close();
+      const report = JSON.parse(e.data);
+
+      // Mark all steps done
+      phaseOrder.forEach((p) => {
+        const stepEl = document.getElementById("step-" + p);
+        if (stepEl) {
+          stepEl.classList.remove("step--active");
+          stepEl.classList.add("step--done");
+        }
+        const detEl = document.getElementById("detail-" + p);
+        if (detEl) detEl.textContent = "Done";
+      });
+
+      setRingProgress(100);
+      if (phaseLabel) phaseLabel.textContent = "Complete";
+      addLog("Migration complete!", "success");
+
+      setTimeout(() => showResults(report), 600);
+    });
+
+    evtSource.addEventListener("error_msg", function (e) {
+      const d = JSON.parse(e.data);
+      addLog("ERROR: " + d.message, "error");
+    });
+
+    evtSource.onerror = function () {
+      addLog("Connection lost — check server logs", "error");
+      evtSource.close();
     };
 
     function countUpTo(el, target, duration) {
-        const start = Date.now();
-        function tick() {
-            const elapsed = Date.now() - start;
-            const progress = Math.min(elapsed / duration, 1);
-            const eased = 1 - Math.pow(1 - progress, 3); // ease-out-cubic
-            el.textContent = Math.round(target * eased).toLocaleString();
-            if (progress < 1) requestAnimationFrame(tick);
-        }
-        requestAnimationFrame(tick);
+      const start = Date.now();
+      function tick() {
+        const elapsed = Date.now() - start;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3); // ease-out-cubic
+        el.textContent = Math.round(target * eased).toLocaleString();
+        if (progress < 1) requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
     }
 
     function showResults(r) {
-        document.getElementById('migrationRunning').style.display = 'none';
-        const resultsSection = document.getElementById('resultsSection');
-        resultsSection.style.display = 'block';
-        resultsSection.style.animation = 'fadeSlideIn 0.5s ease both';
+      document.getElementById("migrationRunning").style.display = "none";
+      const resultsSection = document.getElementById("resultsSection");
+      resultsSection.style.display = "block";
+      resultsSection.style.animation = "fadeSlideIn 0.5s ease both";
 
-        document.getElementById('resultSubtitle').textContent =
-            (r.source_instance || '?') + ' / ' + (r.source_table || '?') +
-            ' → ' + (r.target_instance || '?') + ' / ' + (r.target_table || '?');
+      document.getElementById("resultSubtitle").textContent =
+        (r.source_instance || "?") +
+        " / " +
+        (r.source_table || "?") +
+        " → " +
+        (r.target_instance || "?") +
+        " / " +
+        (r.target_table || "?");
 
-        // Stat cards
-        const grid = document.getElementById('resultsGrid');
-        const stats = [
-            { label: 'Fetched',  value: r.total_source_records, cls: '' },
-            { label: 'Inserted', value: r.inserts,  cls: '--success' },
-            { label: 'Updated',  value: r.updates,  cls: '--success' },
-            { label: 'Skipped',  value: r.skipped,  cls: '--warn' },
-            { label: 'Failed',   value: r.failed,   cls: '--danger' },
-        ];
+      // Stat cards
+      const grid = document.getElementById("resultsGrid");
+      const stats = [
+        { label: "Fetched", value: r.total_source_records, cls: "" },
+        { label: "Inserted", value: r.inserts, cls: "--success" },
+        { label: "Updated", value: r.updates, cls: "--success" },
+        { label: "Skipped", value: r.skipped, cls: "--warn" },
+        { label: "Failed", value: r.failed, cls: "--danger" },
+      ];
 
-        grid.innerHTML = stats.map(s => `
+      grid.innerHTML = stats
+        .map(
+          (s) => `
             <div class="stat-card">
                 <div class="stat-card__value stat-card__value${s.cls}" id="stat_${s.label.toLowerCase()}">0</div>
                 <div class="stat-card__label">${s.label}</div>
             </div>
-        `).join('');
+        `,
+        )
+        .join("");
 
-        // Animate count-up
-        stats.forEach(s => {
-            const el = document.getElementById('stat_' + s.label.toLowerCase());
-            if (el) countUpTo(el, Number(s.value) || 0, 1200);
-        });
+      // Animate count-up
+      stats.forEach((s) => {
+        const el = document.getElementById("stat_" + s.label.toLowerCase());
+        if (el) countUpTo(el, Number(s.value) || 0, 1200);
+      });
 
-        // Timing table
-        const t = r.timing || {};
-        function fmt(s) {
-            if (!s && s !== 0) return '—';
-            if (s >= 60) return Math.floor(s / 60) + 'm ' + Math.round(s % 60) + 's';
-            return Number(s).toFixed(1) + 's';
-        }
-        const tbody = document.querySelector('#timingTable tbody');
-        tbody.innerHTML = [
-            ['Fetch Source', t.fetch_source],
-            ['Fetch Target', t.fetch_target],
-            ['Diff Compute', t.diff],
-            ['Load Records', t.load],
-            ['<strong>Total</strong>', t.total],
-        ].map(row => `<tr><td>${row[0]}</td><td>${fmt(row[1])}</td></tr>`).join('');
+      // Timing table
+      const t = r.timing || {};
+      function fmt(s) {
+        if (!s && s !== 0) return "—";
+        if (s >= 60)
+          return Math.floor(s / 60) + "m " + Math.round(s % 60) + "s";
+        return Number(s).toFixed(1) + "s";
+      }
+      const tbody = document.querySelector("#timingTable tbody");
+      tbody.innerHTML = [
+        ["Fetch Source", t.fetch_source],
+        ["Fetch Target", t.fetch_target],
+        ["Diff Compute", t.diff],
+        ["Load Records", t.load],
+        ["<strong>Total</strong>", t.total],
+      ]
+        .map((row) => `<tr><td>${row[0]}</td><td>${fmt(row[1])}</td></tr>`)
+        .join("");
 
-        // API summary
-        const apiDiv = document.getElementById('apiSummary');
-        const apis = r.api_calls || {};
-        ['source', 'target'].forEach(key => {
-            const a = apis[key] || {};
-            apiDiv.innerHTML += `
+      // API summary
+      const apiDiv = document.getElementById("apiSummary");
+      const apis = r.api_calls || {};
+      ["source", "target"].forEach((key) => {
+        const a = apis[key] || {};
+        apiDiv.innerHTML += `
                 <div class="api-summary__item">
                     <div class="api-summary__label">${a.label || key} Instance</div>
                     <div class="api-summary__calls">${a.calls_made || 0}</div>
                     <div class="api-summary__limit">
-                        Limit: ${a.rate_limit_per_hour || '?'}/hr &nbsp;·&nbsp; ~${a.estimated_remaining || '?'} remaining
+                        Limit: ${a.rate_limit_per_hour || "?"}/hr &nbsp;·&nbsp; Run left: ~${a.estimated_remaining || "?"} &nbsp;·&nbsp; Org left: ~${a.org_remaining || "?"}
                     </div>
                 </div>`;
-        });
-        if (apis.total_calls !== undefined) {
-            apiDiv.innerHTML += `
+      });
+      if (apis.total_calls !== undefined) {
+        apiDiv.innerHTML += `
                 <div class="api-summary__item" style="grid-column:1/-1;text-align:center;">
                     <div class="api-summary__label">Total API Calls</div>
                     <div class="api-summary__calls">${apis.total_calls}</div>
                 </div>`;
-        }
+      }
+
+      // Bind export events
+      const btnHtml = document.getElementById("btnExportHtml");
+      const btnCsv = document.getElementById("btnExportCsv");
+      if (btnHtml) {
+        btnHtml.onclick = function () {
+          exportHtmlReport(r);
+        };
+      }
+      if (btnCsv) {
+        btnCsv.onclick = function () {
+          exportCsvReport(r);
+        };
+      }
     }
-})();
+
+    function triggerDownload(content, filename, contentType) {
+      const blob = new Blob([content], { type: contentType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function exportHtmlReport(r) {
+      const timeFmt = (s) => {
+        if (!s && s !== 0) return "—";
+        if (s >= 60)
+          return Math.floor(s / 60) + "m " + Math.round(s % 60) + "s";
+        return s.toFixed(1) + "s";
+      };
+      const dateStr = new Date().toLocaleString();
+      const html = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>MigrateNow - Migration Report</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f3f4f6; color: #1f2937; margin: 0; padding: 2rem; }
+        .container { max-width: 800px; margin: 0 auto; background: #ffffff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); padding: 2.5rem; }
+        .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #e5e7eb; padding-bottom: 1.5rem; margin-bottom: 2rem; }
+        .title { font-size: 1.75rem; font-weight: 800; color: #4f46e5; margin: 0; }
+        .subtitle { font-size: 0.875rem; color: #6b7280; }
+        .badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; background: #e0e7ff; color: #4338ca; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+        .stat-card { border: 1px solid #e5e7eb; border-radius: 6px; padding: 1rem; text-align: center; background: #fafafa; }
+        .stat-val { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.25rem; }
+        .stat-val.success { color: #10b981; }
+        .stat-val.error { color: #ef4444; }
+        .stat-val.warn { color: #f59e0b; }
+        .stat-lbl { font-size: 0.75rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
+        .section-title { font-size: 1.125rem; font-weight: 700; margin-top: 2rem; margin-bottom: 1rem; color: #374151; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }
+        th, td { text-align: left; padding: 0.75rem 1rem; border-bottom: 1px solid #e5e7eb; }
+        th { background: #f9fafb; font-weight: 600; color: #475569; font-size: 0.875rem; }
+        td { font-size: 0.875rem; }
+        .info-table td { width: 50%; }
+        .footer { font-size: 0.75rem; color: #9ca3af; text-align: center; margin-top: 3rem; border-top: 1px solid #e5e7eb; padding-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1 class="title">MigrateNow Report</h1>
+                <div class="subtitle">Generated on ${dateStr}</div>
+            </div>
+            <span class="badge">${r.migration_type.replace("_", " → ").toUpperCase()}</span>
+        </div>
+
+        <div class="section-title">Configuration Details</div>
+        <table class="info-table">
+            <tbody>
+                <tr>
+                    <td><strong>Source Table:</strong> ${r.source_table}</td>
+                    <td><strong>Source Instance:</strong> ${r.source_instance}</td>
+                </tr>
+                <tr>
+                    <td><strong>Target Table:</strong> ${r.target_table}</td>
+                    <td><strong>Target Instance:</strong> ${r.target_instance}</td>
+                </tr>
+                <tr>
+                    <td><strong>Fetch Mode:</strong> ${r.fetch_mode_used ? r.fetch_mode_used.toUpperCase() : "AUTO"}</td>
+                    <td><strong>Total Records Processed:</strong> ${r.total_source_records.toLocaleString()}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="section-title">Migration Summary</div>
+        <div class="grid">
+            <div class="stat-card">
+                <div class="stat-val">${r.total_source_records.toLocaleString()}</div>
+                <div class="stat-lbl">Fetched</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-val success">${r.inserts.toLocaleString()}</div>
+                <div class="stat-lbl">Inserted</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-val success">${r.updates.toLocaleString()}</div>
+                <div class="stat-lbl">Updated</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-val warn">${r.skipped.toLocaleString()}</div>
+                <div class="stat-lbl">Skipped</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-val error">${r.failed.toLocaleString()}</div>
+                <div class="stat-lbl">Failed</div>
+            </div>
+        </div>
+
+        <div class="section-title">Timing Breakdown</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Phase</th>
+                    <th>Duration</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>Fetch Source</td><td>${timeFmt(r.timing.fetch_source)}</td></tr>
+                <tr><td>Fetch Target</td><td>${timeFmt(r.timing.fetch_target)}</td></tr>
+                <tr><td>Diff Compute</td><td>${timeFmt(r.timing.diff)}</td></tr>
+                <tr><td>Load Records</td><td>${timeFmt(r.timing.load)}</td></tr>
+                <tr style="font-weight:bold; border-top:2px solid #e5e7eb;"><td>Total Duration</td><td>${timeFmt(r.timing.total)}</td></tr>
+            </tbody>
+        </table>
+
+        <div class="section-title">API Call Statistics</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Role</th>
+                    <th>Calls Made</th>
+                    <th>Rate Limit /hr</th>
+                    <th>Run Remaining (est)</th>
+                    <th>Org Remaining</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Source (${r.source_instance})</td>
+                    <td>${(r.api_calls.source || {}).calls_made || 0}</td>
+                    <td>${(r.api_calls.source || {}).rate_limit_per_hour || "N/A"}</td>
+                    <td>${(r.api_calls.source || {}).estimated_remaining || "N/A"}</td>
+                    <td>${(r.api_calls.source || {}).org_remaining || "N/A"}</td>
+                </tr>
+                <tr>
+                    <td>Target (${r.target_instance})</td>
+                    <td>${(r.api_calls.target || {}).calls_made || 0}</td>
+                    <td>${(r.api_calls.target || {}).rate_limit_per_hour || "N/A"}</td>
+                    <td>${(r.api_calls.target || {}).estimated_remaining || "N/A"}</td>
+                    <td>${(r.api_calls.target || {}).org_remaining || "N/A"}</td>
+                </tr>
+                <tr style="font-weight:bold; border-top:2px solid #e5e7eb;">
+                    <td>Total API Calls</td>
+                    <td colspan="4">${r.api_calls.total_calls || 0}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="footer">
+            MigrateNow v2.0 - Enterprise Data Migration Platform
+        </div>
+    </div>
+</body>
+</html>`;
+      triggerDownload(
+        html,
+        "migratenow_report_" + Date.now() + ".html",
+        "text/html",
+      );
+    }
+
+    function exportCsvReport(r) {
+      const rows = [
+        ["Migration Parameter", "Value"],
+        ["Generated At", new Date().toLocaleString()],
+        ["Migration Type", r.migration_type],
+        ["Source Instance", r.source_instance],
+        ["Source Table", r.source_table],
+        ["Target Instance", r.target_instance],
+        ["Target Table", r.target_table],
+        ["Fetch Mode", r.fetch_mode_used],
+        ["Total Source Records", r.total_source_records],
+        ["Inserted", r.inserts],
+        ["Updated", r.updates],
+        ["Skipped", r.skipped],
+        ["Failed", r.failed],
+        ["Total Duration (s)", r.timing.total],
+        ["Total API Calls", r.api_calls.total_calls || 0],
+      ];
+      const csvContent = rows
+        .map((e) =>
+          e.map((val) => '"' + String(val).replace(/"/g, '""') + '"').join(","),
+        )
+        .join("\n");
+      triggerDownload(
+        csvContent,
+        "migratenow_report_" + Date.now() + ".csv",
+        "text/csv",
+      );
+    }
+  })();
 </script>
 {% endblock %}

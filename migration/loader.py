@@ -102,18 +102,21 @@ class BulkLoader:
         processed = 0
         t0 = time.perf_counter()
 
+        def report_progress(chunk_size, phase):
+            nonlocal processed
+            processed += chunk_size
+            if self._progress:
+                self._progress(processed, total, phase)
+
         # ── Phase 1: Inserts ─────────────────────────────────────────
         # Use parallel JSONv2 as primary strategy
         if inserts:
-            ok, fail, failed_recs = self._parallel_jsonv2_insert(inserts)
+            ok, fail, failed_recs = self._parallel_jsonv2_insert(inserts, progress_callback=report_progress)
             result.inserted += ok
             result.failed += fail
             result.failed_records.extend(failed_recs)
             jsonv2_chunk_size = self._jsonv2_chunk_size(len(inserts))
             result.batch_count += (len(inserts) + jsonv2_chunk_size - 1) // jsonv2_chunk_size
-            processed += len(inserts)
-            if self._progress:
-                self._progress(processed, total, "insert")
 
         # ── Phase 2: Updates ─────────────────────────────────────────
         # Updates use Batch API (max ~100 ops/call) or parallel PATCH,
@@ -124,9 +127,7 @@ class BulkLoader:
             result.failed += fail
             result.failed_records.extend(failed_recs)
             result.batch_count += 1
-            processed += len(batch)
-            if self._progress:
-                self._progress(processed, total, "update")
+            report_progress(len(batch), "update")
 
         result.elapsed_seconds = time.perf_counter() - t0
         logger.info(
@@ -186,7 +187,9 @@ class BulkLoader:
         # Strategy 3: Parallel single-record Table API
         return self._parallel_single_insert(records)
 
-    def _parallel_jsonv2_insert(self, records: List[dict]) -> Tuple[int, int, List[dict]]:
+    def _parallel_jsonv2_insert(
+        self, records: List[dict], progress_callback: Callable[[int, str], None] | None = None
+    ) -> Tuple[int, int, List[dict]]:
         """
         Split records into chunks and run JSONv2 insertMultiple concurrently.
         Uses `MAX_WORKERS_LOAD` from config (default 5).
@@ -214,10 +217,14 @@ class BulkLoader:
                     ok, fail, failed_recs = future.result()
                     results.append((ok, fail, failed_recs))
                     logger.info("Chunk %d/%d complete: %d OK, %d failed.", idx + 1, len(chunks), ok, fail)
+                    if progress_callback:
+                        progress_callback(len(chunks[idx]), "insert")
                 except Exception as exc:
                     logger.error("Chunk %d/%d failed with exception: %s", idx + 1, len(chunks), exc)
                     # Treat entire chunk as failed
                     results.append((0, len(chunks[idx]), chunks[idx]))
+                    if progress_callback:
+                        progress_callback(len(chunks[idx]), "insert")
 
         total_ok = sum(r[0] for r in results)
         total_fail = sum(r[1] for r in results)

@@ -1,13 +1,10 @@
 """
 Client-side API-call counter and rate-limit header parser.
 
-ServiceNow returns these headers on responses:
-    X-RateLimit-Limit  – requests allowed per hour
-    X-RateLimit-Reset  – UNIX timestamp when the window resets
-    Retry-After        – seconds to wait (on 429 responses)
-
-Because there is *no* ``X-RateLimit-Remaining`` header, we compute an
-estimate:  remaining ≈ limit − calls_since_last_reset.
+The tracker reports two different concepts:
+1) ``calls_made`` and ``estimated_remaining`` for the *current migration run*.
+2) ``org_remaining`` from server headers (when available), which reflects
+   org-wide usage across all transactions, not just this run.
 
 A dedicated ``api_calls`` logger writes every API call to a separate
 log file (``logs/api_calls.log``) for easy auditing.
@@ -59,6 +56,7 @@ class _InstanceTracker:
     calls_since_reset: int = 0
     rate_limit: int = 0          # from X-RateLimit-Limit
     rate_reset_ts: float = 0.0   # from X-RateLimit-Reset
+    org_remaining: int | None = None  # from server headers when available
     last_retry_after: int = 0    # from Retry-After
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
@@ -66,15 +64,14 @@ class _InstanceTracker:
     @property
     def estimated_remaining(self) -> int | None:
         """
-        Best-effort remaining calls in the current window.
-        Returns ``None`` if we never received rate-limit headers.
+        Estimated remaining calls for the *current migration run*.
+
+        This intentionally ignores historical/org usage and only uses
+        this run's call counter against the advertised hourly limit.
         """
         if self.rate_limit == 0:
             return None
-        # If the window has reset since we last saw the header, restart.
-        if time.time() >= self.rate_reset_ts:
-            return self.rate_limit
-        return max(self.rate_limit - self.calls_since_reset, 0)
+        return max(self.rate_limit - self.calls_total, 0)
 
 
 class RateTracker:
@@ -116,12 +113,13 @@ class RateTracker:
 
             # Audit log (file only — no console output per call)
             status = getattr(response, "status_code", "?") if response else "?"
-            remaining = trk.estimated_remaining
-            remaining_str = str(remaining) if remaining is not None else "?"
+            run_remaining = trk.estimated_remaining
+            run_remaining_str = str(run_remaining) if run_remaining is not None else "?"
+            org_remaining_str = str(trk.org_remaining) if trk.org_remaining is not None else "?"
             total_all = sum(t.calls_total for t in self._instances.values())
             _api_logger.info(
-                "%s #%d │ HTTP %s │ remaining ~%s │ total(all): %d",
-                trk.label, trk.calls_total, status, remaining_str, total_all,
+                "%s #%d │ HTTP %s │ run_remaining ~%s │ org_remaining ~%s │ total(all): %d",
+                trk.label, trk.calls_total, status, run_remaining_str, org_remaining_str, total_all,
             )
 
     def get_total_calls(self, instance: str) -> int:
@@ -140,12 +138,13 @@ class RateTracker:
         result: dict = {}
         total = 0
         for key, trk in self._instances.items():
-            remaining = trk.estimated_remaining
+            run_remaining = trk.estimated_remaining
             result[key] = {
                 "label": trk.label,
                 "calls_made": trk.calls_total,
                 "rate_limit_per_hour": trk.rate_limit or "unknown",
-                "estimated_remaining": remaining if remaining is not None else "unknown",
+                "estimated_remaining": run_remaining if run_remaining is not None else "unknown",
+                "org_remaining": trk.org_remaining if trk.org_remaining is not None else "unknown",
             }
             total += trk.calls_total
         result["total_calls"] = total
@@ -170,8 +169,9 @@ class RateTracker:
         remaining = headers.get("X-RateLimit-Remaining") or headers.get("X-Rate-Limit-Remaining")
         if remaining is not None and trk.rate_limit > 0:
             try:
-                # Synchronise our local counter with the server's truth
-                trk.calls_since_reset = trk.rate_limit - int(remaining)
+                trk.org_remaining = int(remaining)
+                # Keep this for backward compatibility with existing internals.
+                trk.calls_since_reset = trk.rate_limit - trk.org_remaining
             except (ValueError, TypeError):
                 pass
 
@@ -202,6 +202,7 @@ class RateTracker:
                 used, total = usage_part.split("=")[1].split("/")
                 trk.rate_limit = int(total)
                 trk.calls_since_reset = int(used)
+                trk.org_remaining = max(int(total) - int(used), 0)
             except (ValueError, IndexError):
                 pass
             except (ValueError, IndexError):

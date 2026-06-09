@@ -6,26 +6,43 @@
 
 /* ─── Design Tokens ─────────────────────────────────────────────── */
 :root {
-    /* Backgrounds */
-    --bg-body: #080c18;
-    --bg-surface: #0d1224;
-    --bg-card: rgba(13, 18, 36, 0.85);
-    --bg-card-hover: rgba(20, 28, 52, 0.9);
-    --bg-glass: rgba(255, 255, 255, 0.03);
-    --bg-sidebar: #090d1c;
-    --bg-input: rgba(255, 255, 255, 0.04);
+    /* ── Surface Layer System ────────────────────────────────────────
+       Each layer is 12-15 RGB units brighter than the previous.
+       This spread is the minimum required for perceptible depth
+       on dark displays. Hue locked to navy ~228°.
+    ─────────────────────────────────────────────────────────────── */
+    --surface-0: #04060F; /* L0 — App body (deepest navy-black)           */
+    --surface-1: #080D1C; /* L1 — Sidebar, sticky header                  */
+    --surface-2: #0F1628; /* L2 — Cards, panels                           */
+    --surface-3: #172033; /* L3 — Table rows, inputs, inner panels        */
+    --surface-4: #1F293F; /* L4 — Modals, dropdowns, log console          */
+    --surface-4-hover: #25304A; /* L4 hover state                         */
 
-    /* Borders */
-    --border-subtle: rgba(255, 255, 255, 0.06);
-    --border-glass: rgba(255, 255, 255, 0.09);
-    --border-active: rgba(124, 58, 237, 0.55);
-    --border-color: rgba(255, 255, 255, 0.08);
+    /* Backgrounds — remapped to surface layer tokens */
+    --bg-body:       var(--surface-0);
+    --bg-surface:    var(--surface-1);
+    --bg-card:       var(--surface-2);
+    --bg-card-hover: var(--surface-3);
+    --bg-glass:      var(--surface-3);
+    --bg-sidebar:    var(--surface-1);
+    --bg-input:      var(--surface-3);
 
-    /* Text */
-    --text-primary: #f1f5f9;
+    /* Borders — increased opacity so they cut cleanly on dark surfaces */
+    --border-hairline: rgba(255, 255, 255, 0.06);  /* table row separators    */
+    --border-subtle:   rgba(255, 255, 255, 0.10);  /* default card border     */
+    --border-moderate: rgba(255, 255, 255, 0.16);  /* header, wizard bar      */
+    --border-glass:    rgba(255, 255, 255, 0.10);
+    --border-active:   rgba(124, 58, 237, 0.55);   /* focus / selected        */
+    --border-color:    rgba(255, 255, 255, 0.10);
+    /* Platform-specific permanent panel borders */
+    --border-sn: rgba(124, 58, 237, 0.30);
+    --border-sf: rgba(37,  99, 235, 0.30);
+
+    /* Text — bump muted so it’s legible against L2+ surfaces */
+    --text-primary:   #f1f5f9;
     --text-secondary: #94a3b8;
-    --text-muted: #4b5563;
-    --text-faint: #374151;
+    --text-muted:     #64748b;  /* was #4b5563 — one step brighter */
+    --text-faint:     #374151;
 
     /* Brand Accents */
     --violet: #7c3aed;
@@ -81,6 +98,7 @@
 
     /* Layout */
     --sidebar-w: 260px;
+    --sidebar-collapsed-w: 64px;
     --header-h: 75px;
     --content-maxw: 920px;
 }
@@ -116,9 +134,9 @@ body::before {
     position: fixed;
     inset: 0;
     background:
-        radial-gradient(ellipse 700px 500px at 15% 15%, rgba(124, 58, 237, 0.07), transparent),
-        radial-gradient(ellipse 600px 600px at 85% 80%, rgba(37, 99, 235, 0.05), transparent),
-        radial-gradient(ellipse 500px 400px at 50% 50%, rgba(6, 182, 212, 0.03), transparent);
+        radial-gradient(ellipse 700px 500px at 15% 15%, rgba(124, 58, 237, 0.05), transparent),
+        radial-gradient(ellipse 600px 600px at 85% 80%, rgba(37, 99, 235, 0.03), transparent),
+        radial-gradient(ellipse 500px 400px at 50% 50%, rgba(6, 182, 212, 0.02), transparent);
     pointer-events: none;
     z-index: 0;
     animation: bgPulse 18s ease-in-out infinite alternate;
@@ -139,27 +157,129 @@ body::before {
 .sidebar {
     width: var(--sidebar-w);
     min-height: 100vh;
-    background: var(--bg-sidebar);
-    border-right: 1px solid var(--border-subtle);
+    background: var(--surface-1);
+    border-right: 1px solid var(--border-moderate);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.6);
     display: flex;
     flex-direction: column;
     position: fixed;
     top: 0;
     left: 0;
     z-index: 100;
+    overflow: hidden;
+}
+
+.sidebar-toggle {
+    position: fixed;
+    left: calc(var(--sidebar-w) - 12px);
+    top: 90px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--surface-3);
+    border: 1px solid var(--border-moderate);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 101;
+    transition: background var(--t-base), color var(--t-base), border-color var(--t-base);
+    color: var(--text-muted);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+
+.sidebar-toggle:hover {
+    background: var(--surface-4);
+    color: var(--text-primary);
+    border-color: var(--border-active);
+}
+
+
+.sidebar-toggle svg {
+    width: 12px;
+    height: 12px;
+}
+
+/* ─── Collapsed State ─────────────────────────────────────────────── */
+/* Enable transitions dynamically only after user interaction */
+.sidebar-transitions .sidebar {
     transition: width var(--t-slow);
+}
+.sidebar-transitions .main-area {
+    transition: margin-left var(--t-slow);
+}
+.sidebar-transitions .sidebar-toggle {
+    transition: left var(--t-slow), background var(--t-base), color var(--t-base), border-color var(--t-base);
+}
+.sidebar-transitions .sidebar-toggle svg {
+    transition: transform var(--t-slow);
+}
+
+[data-sidebar="collapsed"] .sidebar { width: var(--sidebar-collapsed-w); }
+[data-sidebar="collapsed"] .main-area { margin-left: var(--sidebar-collapsed-w); }
+[data-sidebar="collapsed"] .sidebar-item__label,
+[data-sidebar="collapsed"] .sidebar-section-label,
+[data-sidebar="collapsed"] .sidebar-footer,
+[data-sidebar="collapsed"] .sidebar-migration-section,
+[data-sidebar="collapsed"] .sidebar-logo__text,
+[data-sidebar="collapsed"] .sidebar-logo .logo-full { display: none; }
+[data-sidebar="collapsed"] .sidebar-logo .logo-icon { display: block !important; }
+[data-sidebar="collapsed"] .sidebar-item { justify-content: center; padding: 0.65rem; }
+[data-sidebar="collapsed"] .sidebar-item__icon { opacity: 1; margin: 0; }
+[data-sidebar="collapsed"] .sidebar-toggle svg { transform: rotate(180deg); }
+[data-sidebar="collapsed"] .sidebar-toggle { left: calc(var(--sidebar-collapsed-w) - 12px); }
+[data-sidebar="collapsed"] .sidebar-item.active { border-right: none; border-left: 2px solid var(--violet); }
+
+
+/* Collapsed tooltip on hover */
+[data-sidebar="collapsed"] .sidebar-item {
+    position: relative;
+}
+[data-sidebar="collapsed"] .sidebar-item:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: calc(var(--sidebar-collapsed-w) + 8px);
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--surface-4);
+    border: 1px solid var(--border-moderate);
+    color: var(--text-primary);
+    font-size: 0.78rem;
+    font-weight: 500;
+    padding: 0.3rem 0.7rem;
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+    box-shadow: var(--shadow-md);
+    pointer-events: none;
+    z-index: 200;
 }
 
 /* Logo area */
 .sidebar-logo {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    justify-content: center;
     height: var(--header-h);
-    padding: 0 1.25rem;
-    border-bottom: 1px solid var(--border-subtle);
+    padding: 0 1rem;
     text-decoration: none;
     box-sizing: border-box;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.sidebar-logo .logo-full {
+    width: 100%;
+    max-width: 220px;
+    height: auto;
+    object-fit: contain;
+    display: block;
+}
+
+.sidebar-logo .logo-icon {
+    display: none;
+    width: 36px;
+    height: 36px;
+    object-fit: contain;
 }
 
 .sidebar-logo__mark {
@@ -262,7 +382,8 @@ body::before {
 
 .sidebar-item.active {
     color: var(--text-primary);
-    background: rgba(124, 58, 237, 0.1);
+    background: rgba(124, 58, 237, 0.15);
+    border-right: 2px solid var(--violet);
 }
 
 .sidebar-item.active::before {
@@ -406,8 +527,10 @@ body::before {
     align-items: center;
     justify-content: space-between;
     padding: 0 2rem;
-    border-bottom: 1px solid var(--border-subtle);
-    background: rgba(9, 13, 28, 0.7);
+    border-bottom: 1px solid var(--border-moderate);
+    background: var(--surface-1);
+    /* Shadow below header separates it from scrolling content */
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     position: sticky;
@@ -515,14 +638,16 @@ body::before {
    CARDS
    ═══════════════════════════════════════════════════════════════════ */
 .card {
-    background: var(--bg-card);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid var(--border-glass);
+    background: var(--surface-2);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
     padding: 1.75rem;
     margin-bottom: 1.25rem;
-    box-shadow: var(--shadow-md);
+    /* Shadow creates physical lift from the body (L0 → L2) */
+    box-shadow:
+        0 1px 0 0 rgba(255,255,255,0.04) inset,  /* top inner highlight */
+        0 4px 24px rgba(0, 0, 0, 0.55),
+        0 1px 4px rgba(0, 0, 0, 0.4);
     transition: border-color var(--t-base), box-shadow var(--t-base);
     position: relative;
     overflow: hidden;
@@ -534,13 +659,16 @@ body::before {
     top: 0;
     left: 0;
     right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(124, 58, 237, 0.25), transparent);
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(124, 58, 237, 0.40), transparent);
 }
 
 .card:hover {
-    border-color: rgba(124, 58, 237, 0.2);
-    box-shadow: var(--shadow-lg);
+    border-color: var(--border-moderate);
+    box-shadow:
+        0 1px 0 0 rgba(255,255,255,0.05) inset,
+        0 8px 40px rgba(0, 0, 0, 0.6),
+        0 2px 8px rgba(0, 0, 0, 0.45);
 }
 
 .card__title {
@@ -579,14 +707,14 @@ body::before {
 }
 
 .stat-summary-card {
-    background: var(--bg-card);
-    backdrop-filter: blur(24px);
-    border: 1px solid var(--border-glass);
+    background: var(--surface-2);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
     padding: 1.25rem 1.5rem;
     position: relative;
     overflow: hidden;
     transition: all var(--t-base);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.5), 0 1px 4px rgba(0,0,0,0.35);
 }
 
 .stat-summary-card::before {
@@ -615,7 +743,7 @@ body::before {
 .stat-summary-card:hover {
     transform: translateY(-2px);
     box-shadow: var(--shadow-lg);
-    border-color: rgba(124, 58, 237, 0.2);
+    border-color: var(--border-moderate);
 }
 
 .stat-summary-card__label {
@@ -679,10 +807,8 @@ body::before {
 }
 
 .migration-card {
-    background: var(--bg-card);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid var(--border-glass);
+    background: var(--surface-2);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
     padding: 1.75rem 1.5rem;
     text-align: center;
@@ -690,6 +816,7 @@ body::before {
     transition: all var(--t-slow);
     position: relative;
     overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 .migration-card::before {
@@ -829,13 +956,19 @@ body::before {
     text-transform: uppercase;
     letter-spacing: 0.07em;
     border-bottom: 1px solid var(--border-subtle);
+    background: var(--surface-1);
 }
 
 .recent-history-table tbody td {
     padding: 0.6rem 0.75rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid var(--border-hairline);
     color: var(--text-secondary);
     vertical-align: middle;
+    background: var(--surface-3);
+}
+
+.recent-history-table tbody tr:nth-child(even) td {
+    background: var(--surface-2);
 }
 
 .recent-history-table tbody tr:last-child td {
@@ -843,7 +976,7 @@ body::before {
 }
 
 .recent-history-table tbody tr:hover td {
-    background: rgba(255, 255, 255, 0.02);
+    background: rgba(124, 58, 237, 0.09) !important;
     color: var(--text-primary);
 }
 
@@ -869,8 +1002,8 @@ body::before {
 .form-select {
     width: 100%;
     padding: 0.65rem 1rem;
-    background: var(--bg-input);
-    border: 1px solid var(--border-glass);
+    background: var(--surface-3);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
     color: var(--text-primary);
     font-family: 'Inter', sans-serif;
@@ -881,9 +1014,9 @@ body::before {
 
 .form-input:focus,
 .form-select:focus {
-    border-color: var(--violet);
-    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.14);
-    background: rgba(255, 255, 255, 0.06);
+    border-color: var(--border-active);
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12);
+    background: var(--surface-4);
 }
 
 .form-input::placeholder {
@@ -900,7 +1033,7 @@ body::before {
 }
 
 .form-select option {
-    background: #111827;
+    background: var(--surface-3);
     color: var(--text-primary);
 }
 
@@ -946,11 +1079,13 @@ body::before {
 
 /* Platform colour stripe on connect cards */
 .connect-panel--sn {
-    border-color: rgba(124, 58, 237, 0.2) !important;
+    border-color: var(--border-sn) !important;
+    border-left: 3px solid rgba(124, 58, 237, 0.7) !important;
 }
 
 .connect-panel--sf {
-    border-color: rgba(37, 99, 235, 0.2) !important;
+    border-color: var(--border-sf) !important;
+    border-left: 3px solid rgba(37, 99, 235, 0.7) !important;
 }
 
 /* S / T panel badges — consistent glow design for both Source and Target */
@@ -971,14 +1106,14 @@ body::before {
     background: rgba(124, 58, 237, 0.15);
     border: 2px solid var(--violet);
     color: var(--violet);
-    box-shadow: 0 0 10px rgba(124, 58, 237, 0.35);
+    box-shadow: 0 0 6px rgba(124, 58, 237, 0.25);
 }
 
 .panel-badge--target {
     background: rgba(16, 185, 129, 0.15);
     border: 2px solid var(--emerald);
     color: var(--emerald);
-    box-shadow: 0 0 10px rgba(16, 185, 129, 0.35);
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.25);
 }
 
 /* Collapsible credential input panel */
@@ -1103,8 +1238,8 @@ body::before {
     top: calc(100% + 4px);
     left: 0;
     right: 0;
-    background: #111827;
-    border: 1px solid var(--border-glass);
+    background: var(--surface-4);
+    border: 1px solid var(--border-moderate);
     border-radius: var(--radius-sm);
     box-shadow: var(--shadow-lg);
     z-index: 200;
@@ -1368,7 +1503,7 @@ body::before {
     position: sticky;
     top: 0;
     z-index: 5;
-    background: var(--bg-surface);
+    background: var(--surface-1);
 }
 
 .mapping-table thead th {
@@ -1379,7 +1514,7 @@ body::before {
     color: var(--text-muted);
     padding: 0.55rem 0.75rem;
     text-align: left;
-    border-bottom: 1px solid var(--border-glass);
+    border-bottom: 1px solid var(--border-moderate);
     white-space: nowrap;
 }
 
@@ -1387,17 +1522,21 @@ body::before {
     transition: background var(--t-fast);
 }
 
+.mapping-table tbody tr:nth-child(odd) {
+    background: var(--surface-3);
+}
+
 .mapping-table tbody tr:nth-child(even) {
-    background: rgba(255, 255, 255, 0.01);
+    background: var(--surface-2);
 }
 
 .mapping-table tbody tr:hover {
-    background: rgba(124, 58, 237, 0.05);
+    background: rgba(124, 58, 237, 0.09) !important;
 }
 
 .mapping-table tbody td {
     padding: 0.45rem 0.75rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.025);
+    border-bottom: 1px solid var(--border-hairline);
     font-size: 0.82rem;
     vertical-align: middle;
 }
@@ -1643,8 +1782,8 @@ body::before {
     gap: 0.75rem;
     padding: 0.9rem 1rem;
     border-radius: var(--radius-sm);
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border-glass);
+    background: var(--surface-3);
+    border: 1px solid var(--border-subtle);
     margin-top: 0.75rem;
     font-size: 0.84rem;
 }
@@ -1865,8 +2004,8 @@ body::before {
 
 /* ─── Live Log Console ───────────────────────────────────────────── */
 .log-console {
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid var(--border-glass);
+    background: var(--surface-4);
+    border: 1px solid var(--border-moderate);
     border-radius: var(--radius-sm);
     padding: 0.9rem;
     height: 280px;
@@ -1918,8 +2057,8 @@ body::before {
 }
 
 .stat-card {
-    background: var(--grad-card);
-    border: 1px solid var(--border-glass);
+    background: var(--surface-2);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
     padding: 1.1rem 0.75rem;
     text-align: center;
@@ -2002,8 +2141,8 @@ body::before {
 }
 
 .api-summary__item {
-    background: var(--bg-glass);
-    border: 1px solid var(--border-glass);
+    background: var(--surface-3);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-sm);
     padding: 0.9rem 1rem;
 }
@@ -2077,19 +2216,26 @@ body::before {
     font-size: 0.67rem;
     text-transform: uppercase;
     letter-spacing: 0.07em;
-    border-bottom: 1px solid var(--border-glass);
+    border-bottom: 1px solid var(--border-moderate);
     white-space: nowrap;
+    background: var(--surface-1);
 }
 
 .history-table tbody td {
     padding: 0.65rem 0.6rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid var(--border-hairline);
     color: var(--text-secondary);
     vertical-align: middle;
+    background: var(--surface-3);
+}
+
+.history-table tbody tr:nth-child(even) td {
+    background: var(--surface-2);
 }
 
 .history-table tbody tr:hover td {
-    background: rgba(255, 255, 255, 0.02);
+    background: rgba(124, 58, 237, 0.09) !important;
+    color: var(--text-primary);
 }
 
 .history-table tbody tr:last-child td {
@@ -2103,7 +2249,7 @@ body::before {
 }
 
 .history-row-clickable:hover td {
-    background: rgba(124, 58, 237, 0.06) !important;
+    background: rgba(124, 58, 237, 0.09) !important;
 }
 
 .instance-name {
@@ -2542,13 +2688,11 @@ body::before {
     align-items: center;
     justify-content: space-between;
     margin-bottom: 2rem;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background: var(--surface-2);
+    border: 1px solid var(--border-moderate);
     border-radius: var(--radius-xl);
     padding: 1.25rem 2rem;
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    box-shadow: var(--shadow-md);
     overflow-x: auto;
     position: relative;
 }
@@ -2580,12 +2724,11 @@ body::before {
     justify-content: center;
     font-size: 0.8rem;
     font-weight: 800;
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-subtle);
+    background: var(--surface-3);
     color: var(--text-muted);
     flex-shrink: 0;
     transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1);
 }
 
 .wizard-flow-step__label {
@@ -2662,9 +2805,9 @@ body::before {
     top: 0;
     bottom: 0;
     width: 0%;
-    background: linear-gradient(90deg, var(--violet) 0%, var(--fuchsia) 100%);
+    background: linear-gradient(90deg, var(--violet) 0%, var(--indigo) 100%);
     transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-    box-shadow: 0 0 8px rgba(167, 139, 250, 0.5);
+    box-shadow: 0 0 6px rgba(124, 58, 237, 0.35);
 }
 
 .wizard-flow-connector--done::after {
@@ -2889,13 +3032,14 @@ body::before {
 }
 
 .conn-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border-glass);
+    background: var(--surface-2);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-lg);
     padding: 1.25rem;
     position: relative;
     overflow: hidden;
     transition: all var(--t-base);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .conn-card::before {
@@ -2913,7 +3057,7 @@ body::before {
 }
 
 .conn-card:hover {
-    border-color: rgba(124, 58, 237, 0.25);
+    border-color: var(--border-moderate);
     transform: translateY(-2px);
     box-shadow: var(--shadow-md);
 }
