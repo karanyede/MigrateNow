@@ -81,6 +81,12 @@
                 <span style="color:var(--text-muted); font-size:0.85rem;">Field Mappings Count</span>
                 <span style="color:var(--text-primary); font-weight:600; font-size:0.85rem;">{{ field_count }} field(s) mapped</span>
             </div>
+            {% if limit %}
+            <div style="display:flex; justify-content:space-between; padding:0.6rem 0; border-bottom:1px solid var(--border-hairline);">
+                <span style="color:var(--text-muted); font-size:0.85rem;">Migration Limit</span>
+                <span style="color:var(--text-primary); font-weight:600; font-size:0.85rem;">{{ limit }} records</span>
+            </div>
+            {% endif %}
             <div style="display:flex; justify-content:space-between; padding:0.6rem 0; align-items: flex-start;">
                 <span style="color:var(--text-muted); font-size:0.85rem;">Filter Conditions</span>
                 <span style="color:var(--text-primary); font-weight:600; font-size:0.85rem; text-align:right;">

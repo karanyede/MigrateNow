@@ -8,9 +8,10 @@
         content="MigrateNow — Enterprise-grade data migration between ServiceNow and Salesforce with field mapping, batch operations, and real-time progress.">
     <title>{% block title %}MigrateNow{% endblock %} — Enterprise Data Migration</title>
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/MigrateNow_Favicon.png') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=4">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=11">
+    <!-- <link rel="stylesheet" href="{{ url_for('static', filename='css/theme-light.css') }}?v=1"> -->
     <script>
-        (function() {
+        (function () {
             try {
                 const collapsed = localStorage.getItem('mn-sidebar') === 'collapsed';
                 if (collapsed) {
@@ -33,7 +34,7 @@
                     ].join('\n');
                     document.head.appendChild(s);
                 }
-            } catch(e) {}
+            } catch (e) { }
         })();
     </script>
     {% block head %}{% endblock %}
@@ -51,7 +52,7 @@
         <!-- Collapse Toggle Button (placed outside to avoid overflow:hidden clipping) -->
         <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar" aria-label="Toggle sidebar">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
             </svg>
         </button>
 
@@ -59,8 +60,10 @@
 
             <!-- Logo -->
             <a href="{{ url_for('home') }}" class="sidebar-logo" title="MigrateNow Home">
-                <img src="{{ url_for('static', filename='images/MigrateNow_Logo.png') }}" alt="MigrateNow" class="logo-full">
-                <img src="{{ url_for('static', filename='images/MigrateNow_Favicon.png') }}" alt="MigrateNow" class="logo-icon">
+                <img src="{{ url_for('static', filename='images/MigrateNow_Logo.png') }}" alt="MigrateNow"
+                    class="logo-full">
+                <img src="{{ url_for('static', filename='images/MigrateNow_Favicon.png') }}" alt="MigrateNow"
+                    class="logo-icon">
             </a>
 
             <!-- Navigation -->
@@ -68,8 +71,7 @@
                 <div class="sidebar-section-label">Workspace</div>
 
                 <a href="{{ url_for('home') }}"
-                    class="sidebar-item {% if request.endpoint == 'home' %}active{% endif %}"
-                    id="nav-dashboard"
+                    class="sidebar-item {% if request.endpoint == 'home' %}active{% endif %}" id="nav-dashboard"
                     data-tooltip="Dashboard">
                     <svg class="sidebar-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="1.75">
@@ -81,8 +83,7 @@
 
                 <a href="{{ url_for('connect_page') }}"
                     class="sidebar-item {% if request.endpoint in ['connect_page', 'connect'] %}active{% endif %}"
-                    id="nav-new-migration"
-                    data-tooltip="New Migration">
+                    id="nav-new-migration" data-tooltip="New Migration">
                     <svg class="sidebar-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="1.75">
                         <path stroke-linecap="round" stroke-linejoin="round"
@@ -93,8 +94,7 @@
 
                 <a href="{{ url_for('connections_page') }}"
                     class="sidebar-item {% if request.endpoint in ['connections_page', 'connections_save', 'connections_delete'] %}active{% endif %}"
-                    id="nav-connections"
-                    data-tooltip="Connections">
+                    id="nav-connections" data-tooltip="Connections">
                     <svg class="sidebar-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="1.75">
                         <path stroke-linecap="round" stroke-linejoin="round"
@@ -105,8 +105,7 @@
 
                 <a href="{{ url_for('history') }}"
                     class="sidebar-item {% if request.endpoint in ['history', 'history_detail'] %}active{% endif %}"
-                    id="nav-history"
-                    data-tooltip="History">
+                    id="nav-history" data-tooltip="History">
                     <svg class="sidebar-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="1.75">
                         <path stroke-linecap="round" stroke-linejoin="round"

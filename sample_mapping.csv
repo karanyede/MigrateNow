@@ -1,0 +1,7 @@
+source_field,target_field
+sys_id,u_legacy_sysid
+short_description,short_description
+description,description
+state,state
+priority,priority
+caller_id,caller_id

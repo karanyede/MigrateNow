@@ -42,12 +42,14 @@ class SalesforceBulkFetcher:
         object_name: str,
         fields: list[str],
         extra_where: str = "",
+        limit: int | None = None,
     ) -> None:
         self.client = client
         self.object_name = object_name
         # Always include Id — it's the SF primary key
         self.fields = list(dict.fromkeys(["Id"] + fields))
         self.extra_where = extra_where
+        self.limit = limit
 
     def fetch_all(self) -> List[dict]:
         """
@@ -58,7 +60,7 @@ class SalesforceBulkFetcher:
         Returns all records as list[dict].
         """
         try:
-            return self._fetch_bulk()
+            records = self._fetch_bulk()
         except Exception as exc:
             logger.warning(
                 "Bulk API 2.0 Query failed for '%s': %s. "
@@ -66,7 +68,11 @@ class SalesforceBulkFetcher:
                 self.object_name,
                 exc,
             )
-            return self._fetch_rest()
+            records = self._fetch_rest()
+
+        if self.limit is not None:
+            records = records[:self.limit]
+        return records
 
     def _fetch_bulk(self) -> List[dict]:
         """Fetch using Bulk API 2.0 Query."""
@@ -77,6 +83,7 @@ class SalesforceBulkFetcher:
             self.object_name,
             self.fields,
             self.extra_where,
+            limit=self.limit,
         )
 
         # 2. Poll until complete
@@ -107,6 +114,8 @@ class SalesforceBulkFetcher:
         if self.extra_where:
             soql += f" WHERE {self.extra_where}"
         soql += " ORDER BY Id"
+        if self.limit is not None:
+            soql += f" LIMIT {self.limit}"
 
         records = self.client.query(soql)
 

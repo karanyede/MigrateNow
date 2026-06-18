@@ -372,6 +372,51 @@ class ServiceNowClient:
         )
         return fields
 
+    def get_choice_values(self, table_name: str) -> dict[str, list[dict]]:
+        """
+        Fetch choice values from sys_choice for all fields of a table.
+        Returns a dict mapping field name -> list of {"value": str, "label": str}.
+        """
+        chain = self._get_inheritance_chain(table_name)
+        # Build a single query for all tables in the chain
+        name_filters = "^".join(f"ORname={t}" for t in chain)
+        name_filters = name_filters.replace("ORname=", "name=", 1)
+        query = f"{name_filters}^inactive=false^ORDERBYsequence"
+
+        resp = self._request(
+            "GET",
+            "/api/now/table/sys_choice",
+            params={
+                "sysparm_query": query,
+                "sysparm_fields": "element,value,label",
+                "sysparm_limit": 5000,
+                "sysparm_no_count": "true",
+                "sysparm_exclude_reference_link": "true",
+            },
+        )
+        if resp.status_code == 404:
+            # Some orgs might restrict sys_choice, fail gracefully
+            return {}
+        resp.raise_for_status()
+
+        choices: dict[str, list[dict]] = {}
+        for row in resp.json().get("result", []):
+            field = row.get("element", "")
+            if not field:
+                continue
+            if field not in choices:
+                choices[field] = []
+            choices[field].append({
+                "value": row.get("value", ""),
+                "label": row.get("label", "")
+            })
+
+        logger.info(
+            "Fetched choices for %d fields on table '%s' from %s.",
+            len(choices), table_name, self.role
+        )
+        return choices
+
     def get_record_count(self, table_name: str) -> int:
         """
         Return the total record count for *table_name* using the

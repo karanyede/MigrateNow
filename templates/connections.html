@@ -3,70 +3,246 @@
 {% block title %}Saved Connections{% endblock %}
 {% block page_title %}Saved Connections{% endblock %}
 {% block breadcrumb %}
-    <span>Connections</span>
-    <span class="page-header__breadcrumb-sep">›</span>
-    <span>Manage Profiles</span>
+<span>Connections</span>
+<span class="page-header__breadcrumb-sep">›</span>
+<span>Manage Profiles</span>
 {% endblock %}
 
 {% block header_actions %}
 <a href="{{ url_for('home') }}" class="btn btn-secondary btn-sm">← Dashboard</a>
+<button class="btn btn-primary btn-sm" id="btnOpenAddModal" onclick="openAddModal()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:13px;height:13px;">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+    </svg>
+    Add New
+</button>
 {% endblock %}
 
 {% block content %}
 
-{# Partition connections by platform #}
+{# Combine all connections sorted by platform then name #}
 {% set sn_list = connections | selectattr('platform', 'eq', 'sn') | list %}
 {% set sf_list = connections | selectattr('platform', 'eq', 'sf') | list %}
+{% set all_connections = sn_list + sf_list %}
 
-<!-- ══════════════════════════════════════════════════
-     Add New Connection Panel (collapsed by default)
-══════════════════════════════════════════════════════ -->
-<div class="new-conn-panel" id="newConnPanel">
-    <div class="new-conn-panel__header" onclick="toggleNewConnPanel()">
-        <div class="new-conn-panel__title">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:16px;height:16px;color:var(--violet);">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
-            </svg>
-            Add New Connection Profile
-        </div>
-        <div class="new-conn-panel__chevron" id="newConnChevron">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/>
-            </svg>
+<!-- ══════════════════════════════════════════════
+     Connection Registry
+══════════════════════════════════════════════════ -->
+<div class="card">
+    <div class="conn-registry-header">
+        <div>
+            <div class="conn-registry-title">All Connection Profiles</div>
+            <div class="conn-registry-subtitle">
+                {{ all_connections | length }} profile{% if all_connections | length != 1 %}s{% endif %} saved
+                — {{ sn_list | length }} ServiceNow, {{ sf_list | length }} Salesforce
+            </div>
         </div>
     </div>
 
-    <div class="new-conn-panel__body" id="newConnBody">
+    <div class="conn-split-registry">
+        <!-- ServiceNow Column -->
+        <div class="conn-column">
+            <div class="conn-column-header">
+                <div class="conn-column-title">
+                    <svg class="conn-column-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                    </svg>
+                    <span>ServiceNow</span>
+                </div>
+                <div class="conn-column-count">{{ sn_list | length }}</div>
+            </div>
+            <div class="conn-list">
+                {% if sn_list %}
+                {% for c in sn_list %}
+                <div class="conn-card conn-card--sn">
+                    <div class="conn-card__top">
+                        <div class="conn-card__info">
+                            <div class="conn-card__name" title="{{ c.name }}">{{ c.name }}</div>
+                            <div class="conn-card__subtext">{{ c.instance }}</div>
+                            <div class="conn-card__subtext">{{ c.username }}</div>
+                        </div>
+                        <div class="kebab-wrapper">
+                            <button class="kebab-btn" onclick="toggleKebab(this)" aria-label="Actions" type="button">
+                                <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;">
+                                    <circle cx="12" cy="5" r="1.5" />
+                                    <circle cx="12" cy="12" r="1.5" />
+                                    <circle cx="12" cy="19" r="1.5" />
+                                </svg>
+                            </button>
+                            <div class="kebab-dropdown">
+                                <button type="button" class="kebab-item edit-conn-btn" data-id="{{ c.id }}"
+                                    data-platform="sn" data-name="{{ c.name | e }}" data-instance="{{ c.instance | e }}"
+                                    data-username="{{ c.username | e }}" data-login-url=""
+                                    onclick="openEditModalFromKebab(this)">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                        style="width:13px;height:13px;">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                            d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
+                                    </svg>
+                                    Edit
+                                </button>
+                                <button type="button" class="kebab-item kebab-item--danger"
+                                    onclick="showDeleteConfirm(this)">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                        style="width:13px;height:13px;">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                            d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                                    </svg>
+                                    Delete
+                                </button>
+                                <div class="kebab-confirm">
+                                    <div class="kebab-confirm__label">Delete "{{ c.name }}"?</div>
+                                    <div class="kebab-confirm__actions">
+                                        <form method="POST" action="{{ url_for('connections_delete', conn_id=c.id) }}"
+                                            style="display:inline;">
+                                            <button type="submit" class="btn btn-danger btn-xs">Confirm</button>
+                                        </form>
+                                        <button type="button" class="btn btn-secondary btn-xs"
+                                            onclick="hideDeleteConfirm(this)">Cancel</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="conn-column-empty">No ServiceNow profiles saved</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Salesforce Column -->
+        <div class="conn-column">
+            <div class="conn-column-header">
+                <div class="conn-column-title">
+                    <svg class="conn-column-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z" />
+                    </svg>
+                    <span>Salesforce</span>
+                </div>
+                <div class="conn-column-count">{{ sf_list | length }}</div>
+            </div>
+            <div class="conn-list">
+                {% if sf_list %}
+                {% for c in sf_list %}
+                <div class="conn-card conn-card--sf">
+                    <div class="conn-card__top">
+                        <div class="conn-card__info">
+                            <div class="conn-card__name" title="{{ c.name }}">{{ c.name }}</div>
+                            <div class="conn-card__subtext">{{ c.login_url | replace('https://','') }}</div>
+                            <div class="conn-card__subtext">{{ c.username }}</div>
+                        </div>
+                        <div class="kebab-wrapper">
+                            <button class="kebab-btn" onclick="toggleKebab(this)" aria-label="Actions" type="button">
+                                <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;">
+                                    <circle cx="12" cy="5" r="1.5" />
+                                    <circle cx="12" cy="12" r="1.5" />
+                                    <circle cx="12" cy="19" r="1.5" />
+                                </svg>
+                            </button>
+                            <div class="kebab-dropdown">
+                                <button type="button" class="kebab-item edit-conn-btn" data-id="{{ c.id }}"
+                                    data-platform="sf" data-name="{{ c.name | e }}" data-instance=""
+                                    data-username="{{ c.username | e }}" data-login-url="{{ c.login_url | e }}"
+                                    onclick="openEditModalFromKebab(this)">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                        style="width:13px;height:13px;">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                            d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
+                                    </svg>
+                                    Edit
+                                </button>
+                                <button type="button" class="kebab-item kebab-item--danger"
+                                    onclick="showDeleteConfirm(this)">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                        style="width:13px;height:13px;">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                            d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                                    </svg>
+                                    Delete
+                                </button>
+                                <div class="kebab-confirm">
+                                    <div class="kebab-confirm__label">Delete "{{ c.name }}"?</div>
+                                    <div class="kebab-confirm__actions">
+                                        <form method="POST" action="{{ url_for('connections_delete', conn_id=c.id) }}"
+                                            style="display:inline;">
+                                            <button type="submit" class="btn btn-danger btn-xs">Confirm</button>
+                                        </form>
+                                        <button type="button" class="btn btn-secondary btn-xs"
+                                            onclick="hideDeleteConfirm(this)">Cancel</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="conn-column-empty">No Salesforce profiles saved</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     Add New Connection Modal
+══════════════════════════════════════════════════ -->
+<div class="conn-modal-backdrop" id="addModal">
+    <div class="conn-modal">
+        <div class="conn-modal__header">
+            <div class="conn-modal__title">New Connection Profile</div>
+            <button type="button" class="conn-modal__close" onclick="closeAddModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    style="width:20px;height:20px;">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
         <form method="POST" action="{{ url_for('connections_save') }}" id="newConnForm">
-            <div class="conn-picker__label" style="margin-top:0.5rem;">Platform</div>
+            <div class="conn-picker__label" style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.25rem;">
+                Platform</div>
             <div class="conn-platform-tabs">
-                <div class="conn-platform-tab active-tab" id="tabSN" onclick="selectPlatformTab('sn')">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z"/>
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
+                <button type="button" class="conn-platform-tab active-tab" id="tabSN" onclick="selectPlatformTab('sn')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        style="width:15px;height:15px;">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
                     </svg>
                     ServiceNow
-                </div>
-                <div class="conn-platform-tab" id="tabSF" onclick="selectPlatformTab('sf')">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z"/>
+                </button>
+                <button type="button" class="conn-platform-tab" id="tabSF" onclick="selectPlatformTab('sf')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        style="width:15px;height:15px;">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z" />
                     </svg>
                     Salesforce
-                </div>
+                </button>
             </div>
 
             <input type="hidden" name="platform" id="formPlatform" value="sn">
 
-            <div class="form-group" style="margin-top:0.75rem;">
+            <div class="form-group">
                 <label for="conn_name">Profile Name</label>
-                <input type="text" class="form-input" id="conn_name" name="name" placeholder="e.g. Dev-ServiceNow, Prod-SF" required autocomplete="off">
+                <input type="text" class="form-input" id="conn_name" name="name"
+                    placeholder="e.g. Dev-ServiceNow, Prod-SF" required autocomplete="off">
             </div>
 
             <!-- ServiceNow Inputs -->
             <div id="snInputs">
                 <div class="form-group">
                     <label for="sn_instance">Instance URL</label>
-                    <input type="text" class="form-input" id="sn_instance" name="sn_instance" placeholder="dev12345.service-now.com">
+                    <input type="text" class="form-input" id="sn_instance" name="sn_instance"
+                        placeholder="dev12345.service-now.com">
                 </div>
                 <div class="form-row">
                     <div class="form-group">
@@ -76,9 +252,15 @@
                     <div class="form-group">
                         <label for="sn_password">Password</label>
                         <div class="password-wrap">
-                            <input type="password" class="form-input" id="sn_password" name="sn_password" placeholder="••••••••">
+                            <input type="password" class="form-input" id="sn_password" name="sn_password"
+                                placeholder="••••••••">
                             <button type="button" class="password-toggle" onclick="togglePw('sn_password',this)">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                                </svg>
                             </button>
                         </div>
                     </div>
@@ -92,12 +274,12 @@
                     <div class="sf-env-toggle">
                         <label class="sf-env-option">
                             <input type="radio" name="sf_env" value="https://login.salesforce.com" checked
-                                   onchange="document.getElementById('sf_login_url').value=this.value">
+                                onchange="document.getElementById('sf_login_url').value=this.value">
                             <span>Production</span>
                         </label>
                         <label class="sf-env-option">
                             <input type="radio" name="sf_env" value="https://test.salesforce.com"
-                                   onchange="document.getElementById('sf_login_url').value=this.value">
+                                onchange="document.getElementById('sf_login_url').value=this.value">
                             <span>Sandbox</span>
                         </label>
                     </div>
@@ -105,44 +287,61 @@
                 </div>
                 <div class="form-group">
                     <label for="sf_username">Username / Email</label>
-                    <input type="text" class="form-input" id="sf_username" name="sf_username" placeholder="user@example.com">
+                    <input type="text" class="form-input" id="sf_username" name="sf_username"
+                        placeholder="user@example.com">
                 </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label for="sf_password">Password</label>
                         <div class="password-wrap">
-                            <input type="password" class="form-input" id="sf_password" name="sf_password" placeholder="••••••••">
+                            <input type="password" class="form-input" id="sf_password" name="sf_password"
+                                placeholder="••••••••">
                             <button type="button" class="password-toggle" onclick="togglePw('sf_password',this)">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                                </svg>
                             </button>
                         </div>
                     </div>
                     <div class="form-group">
                         <label for="sf_security_token">Security Token</label>
                         <div class="password-wrap">
-                            <input type="password" class="form-input" id="sf_security_token" name="sf_security_token" placeholder="Optional">
+                            <input type="password" class="form-input" id="sf_security_token" name="sf_security_token"
+                                placeholder="Optional">
                             <button type="button" class="password-toggle" onclick="togglePw('sf_security_token',this)">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                                </svg>
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Test status indicator -->
-            <div id="testStatus" style="display:none; margin:0.75rem 0; padding:0.6rem 0.9rem; border-radius:var(--radius-sm); font-size:0.8rem;"></div>
+            <div id="testStatus"
+                style="display:none; margin:0.75rem 0; padding:0.6rem 0.9rem; border-radius:var(--radius-sm); font-size:0.8rem;">
+            </div>
 
             <div class="btn-row" style="margin-top:1.25rem;">
-                <button type="button" class="btn btn-secondary" onclick="toggleNewConnPanel()">Cancel</button>
+                <button type="button" class="btn btn-secondary" onclick="closeAddModal()">Cancel</button>
                 <button type="button" class="btn btn-secondary" id="btnTestNew" onclick="testNewConnection()">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z"/>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        style="width:14px;height:14px;">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
                     </svg>
                     Test Connection
                 </button>
                 <button type="submit" class="btn btn-primary" id="btnSaveNew" disabled>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px;">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        style="width:14px;height:14px;">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
                     </svg>
                     Save Connection
                 </button>
@@ -151,175 +350,17 @@
     </div>
 </div>
 
-<!-- ══════════════════════════════════════════════════
-     Two Horizontal Sections: ServiceNow | Salesforce
-══════════════════════════════════════════════════════ -->
-
-<!-- ServiceNow Section -->
-<div class="card" style="margin-bottom:1.25rem;">
-    <div class="card__header">
-        <div class="card__header-left">
-            <div class="card__title" style="display:flex;align-items:center;gap:0.5rem;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="width:18px;height:18px;color:var(--violet);">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z"/>
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
-                </svg>
-                ServiceNow Connections
-            </div>
-            <div class="card__subtitle">{{ sn_list | length }} profile{% if sn_list | length != 1 %}s{% endif %} saved</div>
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="openNewConnPanel('sn')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:13px;height:13px;">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
-            </svg>
-            Add SN Profile
-        </button>
-    </div>
-
-    {% if sn_list %}
-    <div class="conn-grid" style="padding-top:0.5rem;">
-        {% for c in sn_list %}
-        <div class="conn-card conn-card--sn">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-                <div class="conn-card__name">{{ c.name }}</div>
-                <span class="conn-card__platform conn-card__platform--sn">ServiceNow</span>
-            </div>
-            <div style="margin-top:0.5rem;">
-                <div class="conn-card__detail">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="width:12px;height:12px;display:inline;vertical-align:middle;margin-right:0.25rem;">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"/>
-                    </svg>
-                    {{ c.instance }}
-                </div>
-                <div class="conn-card__detail">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="width:12px;height:12px;display:inline;vertical-align:middle;margin-right:0.25rem;">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/>
-                    </svg>
-                    {{ c.username }}
-                </div>
-            </div>
-            <div class="conn-card__actions">
-                <button type="button" class="btn btn-secondary btn-xs edit-conn-btn"
-                        data-id="{{ c.id }}"
-                        data-platform="sn"
-                        data-name="{{ c.name | e }}"
-                        data-instance="{{ c.instance | e }}"
-                        data-username="{{ c.username | e }}"
-                        data-login-url=""
-                        onclick="openEditModal(this)">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125"/>
-                    </svg>
-                    Edit
-                </button>
-                <form method="POST" action="{{ url_for('connections_delete', conn_id=c.id) }}" style="display:inline;"
-                      onsubmit="return confirm('Delete profile &quot;{{ c.name }}&quot;?');">
-                    <button type="submit" class="btn btn-danger btn-xs">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"/>
-                        </svg>
-                        Delete
-                    </button>
-                </form>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div style="padding:2rem 0;text-align:center;color:var(--text-muted);font-size:0.83rem;">
-        No ServiceNow connections saved yet.
-        <button class="btn btn-secondary btn-sm" style="margin-left:0.75rem;" onclick="openNewConnPanel('sn')">Add First Profile</button>
-    </div>
-    {% endif %}
-</div>
-
-<!-- Salesforce Section -->
-<div class="card" style="margin-bottom:0;">
-    <div class="card__header">
-        <div class="card__header-left">
-            <div class="card__title" style="display:flex;align-items:center;gap:0.5rem;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="width:18px;height:18px;color:var(--blue);">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 15Z"/>
-                </svg>
-                Salesforce Connections
-            </div>
-            <div class="card__subtitle">{{ sf_list | length }} profile{% if sf_list | length != 1 %}s{% endif %} saved</div>
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="openNewConnPanel('sf')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:13px;height:13px;">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
-            </svg>
-            Add SF Profile
-        </button>
-    </div>
-
-    {% if sf_list %}
-    <div class="conn-grid" style="padding-top:0.5rem;">
-        {% for c in sf_list %}
-        <div class="conn-card conn-card--sf">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-                <div class="conn-card__name">{{ c.name }}</div>
-                <span class="conn-card__platform conn-card__platform--sf">Salesforce</span>
-            </div>
-            <div style="margin-top:0.5rem;">
-                <div class="conn-card__detail">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="width:12px;height:12px;display:inline;vertical-align:middle;margin-right:0.25rem;">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"/>
-                    </svg>
-                    {{ c.login_url | replace('https://','') }}
-                </div>
-                <div class="conn-card__detail">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="width:12px;height:12px;display:inline;vertical-align:middle;margin-right:0.25rem;">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/>
-                    </svg>
-                    {{ c.username }}
-                </div>
-            </div>
-            <div class="conn-card__actions">
-                <button type="button" class="btn btn-secondary btn-xs edit-conn-btn"
-                        data-id="{{ c.id }}"
-                        data-platform="sf"
-                        data-name="{{ c.name | e }}"
-                        data-instance=""
-                        data-username="{{ c.username | e }}"
-                        data-login-url="{{ c.login_url | e }}"
-                        onclick="openEditModal(this)">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125"/>
-                    </svg>
-                    Edit
-                </button>
-                <form method="POST" action="{{ url_for('connections_delete', conn_id=c.id) }}" style="display:inline;"
-                      onsubmit="return confirm('Delete profile &quot;{{ c.name }}&quot;?');">
-                    <button type="submit" class="btn btn-danger btn-xs">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"/>
-                        </svg>
-                        Delete
-                    </button>
-                </form>
-            </div>
-        </div>
-        {% endfor %}
-    </div>
-    {% else %}
-    <div style="padding:2rem 0;text-align:center;color:var(--text-muted);font-size:0.83rem;">
-        No Salesforce connections saved yet.
-        <button class="btn btn-secondary btn-sm" style="margin-left:0.75rem;" onclick="openNewConnPanel('sf')">Add First Profile</button>
-    </div>
-    {% endif %}
-</div>
-
-<!-- ══════════════════════════════════════════════════
+<!-- ══════════════════════════════════════════════
      Edit Connection Modal
-══════════════════════════════════════════════════════ -->
-<div id="editModal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px); align-items:center; justify-content:center;">
-    <div style="background:var(--bg-surface); border:1px solid var(--border-glass); border-radius:var(--radius-lg); padding:1.75rem; width:100%; max-width:480px; margin:1rem; box-shadow:var(--shadow-lg);">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;">
-            <div class="card__title" style="margin:0;">Edit Connection Profile</div>
-            <button type="button" onclick="closeEditModal()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:0.25rem;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/>
+══════════════════════════════════════════════════ -->
+<div class="conn-modal-backdrop" id="editModal">
+    <div class="conn-modal">
+        <div class="conn-modal__header">
+            <div class="conn-modal__title">Edit Connection Profile</div>
+            <button type="button" class="conn-modal__close" onclick="closeEditModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    style="width:20px;height:20px;">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
                 </svg>
             </button>
         </div>
@@ -335,19 +376,28 @@
             <div id="editSNFields">
                 <div class="form-group">
                     <label>Instance URL</label>
-                    <input type="text" class="form-input" name="sn_instance" id="editInstance" placeholder="dev12345.service-now.com">
+                    <input type="text" class="form-input" name="sn_instance" id="editInstance"
+                        placeholder="dev12345.service-now.com">
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Username</label>
+                        <label>Username<br><span
+                                style="font-size:0.7rem;opacity:0;user-select:none;">&nbsp;</span></label>
                         <input type="text" class="form-input" name="sn_username" id="editUsername">
                     </div>
                     <div class="form-group">
-                        <label>Password <span style="font-size:0.7rem;color:var(--text-muted);">(leave blank to keep)</span></label>
+                        <label>Password <br><span style="font-size:0.7rem;color:var(--text-muted);">(leave blank to
+                                keep)</span></label>
                         <div class="password-wrap">
-                            <input type="password" class="form-input" name="sn_password" id="editSNPassword" placeholder="••••••••">
+                            <input type="password" class="form-input" name="sn_password" id="editSNPassword"
+                                placeholder="••••••••">
                             <button type="button" class="password-toggle" onclick="togglePw('editSNPassword',this)">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                                </svg>
                             </button>
                         </div>
                     </div>
@@ -366,39 +416,58 @@
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Password <span style="font-size:0.7rem;color:var(--text-muted);">(leave blank to keep)</span></label>
+                        <label>Password <br><span style="font-size:0.7rem;color:var(--text-muted);">(leave blank to
+                                keep)</span></label>
                         <div class="password-wrap">
-                            <input type="password" class="form-input" name="sf_password" id="editSFPassword" placeholder="••••••••">
+                            <input type="password" class="form-input" name="sf_password" id="editSFPassword"
+                                placeholder="••••••••">
                             <button type="button" class="password-toggle" onclick="togglePw('editSFPassword',this)">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                                </svg>
                             </button>
                         </div>
                     </div>
                     <div class="form-group">
-                        <label>Security Token <span style="font-size:0.7rem;color:var(--text-muted);">(leave blank to keep)</span></label>
+                        <label>Security Token <br><span style="font-size:0.7rem;color:var(--text-muted);">(leave blank
+                                to keep)</span></label>
                         <div class="password-wrap">
-                            <input type="password" class="form-input" name="sf_security_token" id="editSFToken" placeholder="Optional">
+                            <input type="password" class="form-input" name="sf_security_token" id="editSFToken"
+                                placeholder="Optional">
                             <button type="button" class="password-toggle" onclick="togglePw('editSFToken',this)">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                                </svg>
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div id="editTestStatus" style="display:none; margin:0.75rem 0; padding:0.6rem 0.9rem; border-radius:var(--radius-sm); font-size:0.8rem;"></div>
+            <div id="editTestStatus"
+                style="display:none; margin:0.75rem 0; padding:0.6rem 0.9rem; border-radius:var(--radius-sm); font-size:0.8rem;">
+            </div>
 
             <div class="btn-row" style="margin-top:1.25rem;">
                 <button type="button" class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
                 <button type="button" class="btn btn-secondary" onclick="testEditConnection()">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z"/>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        style="width:13px;height:13px;">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
                     </svg>
                     Test
                 </button>
                 <button type="submit" class="btn btn-primary" id="btnSaveEdit">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:13px;height:13px;">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                        style="width:13px;height:13px;">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
                     </svg>
                     Save Changes
                 </button>
@@ -411,162 +480,215 @@
 
 {% block scripts %}
 <script>
-// ─── Password toggle ─────────────────────────────────────
-const EYE_OPEN = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>`;
-const EYE_SHUT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88"/></svg>`;
+    // ─── Eye icon constants ───────────────────────────────────────
+    const EYE_OPEN = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>`;
+    const EYE_SHUT = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88"/></svg>`;
 
-function togglePw(id, btn) {
-    const inp = document.getElementById(id);
-    inp.type = inp.type === 'text' ? 'password' : 'text';
-    btn.innerHTML = inp.type === 'password' ? EYE_OPEN : EYE_SHUT;
-}
+    function togglePw(id, btn) {
+        const inp = document.getElementById(id);
+        inp.type = inp.type === 'text' ? 'password' : 'text';
+        btn.innerHTML = inp.type === 'password' ? EYE_OPEN : EYE_SHUT;
+    }
 
-// ─── Add New Connection Panel ─────────────────────────────
-function toggleNewConnPanel() {
-    const body    = document.getElementById('newConnBody');
-    const chevron = document.getElementById('newConnChevron');
-    const panel   = document.getElementById('newConnPanel');
-    const isOpen  = panel.classList.toggle('open');
-    chevron.style.transform = isOpen ? 'rotate(180deg)' : '';
-}
+    // ─── Add Modal ────────────────────────────────────────────────
+    function openAddModal(platform) {
+        document.getElementById('addModal').classList.add('open');
+        if (platform) selectPlatformTab(platform);
+        setTimeout(() => document.getElementById('conn_name').focus(), 80);
+    }
 
-function openNewConnPanel(platform) {
-    const panel = document.getElementById('newConnPanel');
-    panel.classList.add('open');
-    document.getElementById('newConnChevron').style.transform = 'rotate(180deg)';
-    if (platform) selectPlatformTab(platform);
-    document.getElementById('conn_name').focus();
-    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
+    function closeAddModal() {
+        document.getElementById('addModal').classList.remove('open');
+    }
 
-// ─── Platform tab selection ───────────────────────────────
-function selectPlatformTab(platform) {
-    const isSN = platform === 'sn';
-    document.getElementById('tabSN').classList.toggle('active-tab', isSN);
-    document.getElementById('tabSF').classList.toggle('active-tab', !isSN);
-    document.getElementById('formPlatform').value = platform;
-    document.getElementById('snInputs').style.display = isSN ? '' : 'none';
-    document.getElementById('sfInputs').style.display = isSN ? 'none' : '';
-    document.getElementById('sn_instance').required  = isSN;
-    document.getElementById('sn_username').required  = isSN;
-    document.getElementById('sn_password').required  = isSN;
-    document.getElementById('sf_username').required  = !isSN;
-    document.getElementById('sf_password').required  = !isSN;
-    // Reset test state
-    setTestStatus('testStatus', null);
-    document.getElementById('btnSaveNew').disabled = true;
-}
+    document.getElementById('addModal').addEventListener('click', function (e) {
+        if (e.target === this) closeAddModal();
+    });
 
-// ─── Generic connection test helper ──────────────────────
-async function testConn(payload, statusId, saveBtnId) {
-    const statusEl = document.getElementById(statusId);
-    statusEl.style.display = '';
-    statusEl.style.background = 'rgba(124,58,237,0.08)';
-    statusEl.style.border = '1px solid rgba(124,58,237,0.2)';
-    statusEl.style.color = 'var(--text-muted)';
-    statusEl.textContent = '⏳ Testing connection…';
-    if (saveBtnId) document.getElementById(saveBtnId).disabled = true;
+    // ─── Platform tab selection ───────────────────────────────────
+    function selectPlatformTab(platform) {
+        const isSN = platform === 'sn';
+        document.getElementById('tabSN').classList.toggle('active-tab', isSN);
+        document.getElementById('tabSF').classList.toggle('active-tab', !isSN);
+        document.getElementById('formPlatform').value = platform;
+        document.getElementById('snInputs').style.display = isSN ? '' : 'none';
+        document.getElementById('sfInputs').style.display = isSN ? 'none' : '';
+        document.getElementById('sn_instance').required = isSN;
+        document.getElementById('sn_username').required = isSN;
+        document.getElementById('sn_password').required = isSN;
+        document.getElementById('sf_username').required = !isSN;
+        document.getElementById('sf_password').required = !isSN;
+        setTestStatus('testStatus', null);
+        document.getElementById('btnSaveNew').disabled = true;
+    }
 
-    try {
-        const res  = await fetch('/api/test_connection', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        if (data.ok) {
-            statusEl.style.background = 'rgba(16,185,129,0.08)';
-            statusEl.style.border     = '1px solid rgba(16,185,129,0.25)';
-            statusEl.style.color      = 'var(--emerald)';
-            statusEl.textContent      = '✓ ' + data.message;
-            if (saveBtnId) document.getElementById(saveBtnId).disabled = false;
-        } else {
+    // ─── Generic connection test ──────────────────────────────────
+    async function testConn(payload, statusId, saveBtnId) {
+        const statusEl = document.getElementById(statusId);
+        statusEl.style.display = '';
+        statusEl.style.background = 'rgba(124,58,237,0.08)';
+        statusEl.style.border = '1px solid rgba(124,58,237,0.2)';
+        statusEl.style.color = 'var(--text-muted)';
+        statusEl.textContent = '⏳ Testing connection…';
+        if (saveBtnId) document.getElementById(saveBtnId).disabled = true;
+
+        try {
+            const res = await fetch('/api/test_connection', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (data.ok) {
+                statusEl.style.background = 'rgba(16,185,129,0.08)';
+                statusEl.style.border = '1px solid rgba(16,185,129,0.25)';
+                statusEl.style.color = 'var(--emerald)';
+                statusEl.textContent = '✓ ' + data.message;
+                if (saveBtnId) document.getElementById(saveBtnId).disabled = false;
+            } else {
+                statusEl.style.background = 'rgba(239,68,68,0.08)';
+                statusEl.style.border = '1px solid rgba(239,68,68,0.2)';
+                statusEl.style.color = 'var(--rose)';
+                statusEl.textContent = '✗ ' + data.message;
+            }
+        } catch (err) {
             statusEl.style.background = 'rgba(239,68,68,0.08)';
-            statusEl.style.border     = '1px solid rgba(239,68,68,0.2)';
-            statusEl.style.color      = 'var(--rose)';
-            statusEl.textContent      = '✗ ' + data.message;
+            statusEl.style.border = '1px solid rgba(239,68,68,0.2)';
+            statusEl.style.color = 'var(--rose)';
+            statusEl.textContent = '✗ Network error: ' + err.message;
         }
-    } catch (err) {
-        statusEl.style.background = 'rgba(239,68,68,0.08)';
-        statusEl.style.border     = '1px solid rgba(239,68,68,0.2)';
-        statusEl.style.color      = 'var(--rose)';
-        statusEl.textContent      = '✗ Network error: ' + err.message;
     }
-}
 
-function setTestStatus(id, msg) {
-    const el = document.getElementById(id);
-    if (!msg) { el.style.display = 'none'; return; }
-    el.style.display = '';
-    el.textContent = msg;
-}
-
-// ─── Edit modal ────────────────────────────────────────────
-function openEditModal(btn) {
-    // Read all values from data-* attributes (safe against special chars)
-    const id       = btn.dataset.id;
-    const platform = btn.dataset.platform;
-    const name     = btn.dataset.name;
-    const instance = btn.dataset.instance;
-    const username = btn.dataset.username;
-    const loginUrl = btn.dataset.loginUrl || 'https://login.salesforce.com';
-
-    const modal = document.getElementById('editModal');
-    modal.style.display = 'flex';
-    document.getElementById('editForm').action = '/connections/' + id + '/edit';
-    document.getElementById('editPlatform').value = platform;
-    document.getElementById('editName').value     = name;
-
-    const isSN = platform === 'sn';
-    document.getElementById('editSNFields').style.display = isSN ? '' : 'none';
-    document.getElementById('editSFFields').style.display = isSN ? 'none' : '';
-
-    if (isSN) {
-        document.getElementById('editInstance').value   = instance || '';
-        document.getElementById('editUsername').value   = username || '';
-        document.getElementById('editSNPassword').value = '';
-    } else {
-        document.getElementById('editLoginUrl').value    = loginUrl;
-        document.getElementById('editSFUsername').value  = username || '';
-        document.getElementById('editSFPassword').value  = '';
-        document.getElementById('editSFToken').value     = '';
+    function setTestStatus(id, msg) {
+        const el = document.getElementById(id);
+        if (!msg) { el.style.display = 'none'; return; }
+        el.style.display = '';
+        el.textContent = msg;
     }
-    setTestStatus('editTestStatus', null);
-}
 
-function closeEditModal() {
-    document.getElementById('editModal').style.display = 'none';
-}
-
-// Close modal on backdrop click
-document.getElementById('editModal').addEventListener('click', function(e) {
-    if (e.target === this) closeEditModal();
-});
-
-// ─── Test for Edit modal ──────────────────────────────────
-function testEditConnection() {
-    const platform = document.getElementById('editPlatform').value;
-    let payload;
-    if (platform === 'sn') {
-        payload = {
-            platform: 'sn',
-            instance: document.getElementById('editInstance').value,
-            username: document.getElementById('editUsername').value,
-            password: document.getElementById('editSNPassword').value
-        };
-    } else {
-        payload = {
-            platform:       'sf',
-            login_url:      document.getElementById('editLoginUrl').value,
-            username:       document.getElementById('editSFUsername').value,
-            password:       document.getElementById('editSFPassword').value,
-            security_token: document.getElementById('editSFToken').value
-        };
+    function testNewConnection() {
+        const platform = document.getElementById('formPlatform').value;
+        let payload;
+        if (platform === 'sn') {
+            payload = {
+                platform: 'sn',
+                instance: document.getElementById('sn_instance').value,
+                username: document.getElementById('sn_username').value,
+                password: document.getElementById('sn_password').value
+            };
+        } else {
+            payload = {
+                platform: 'sf',
+                login_url: document.getElementById('sf_login_url').value,
+                username: document.getElementById('sf_username').value,
+                password: document.getElementById('sf_password').value,
+                security_token: document.getElementById('sf_security_token').value
+            };
+        }
+        testConn(payload, 'testStatus', 'btnSaveNew');
     }
-    testConn(payload, 'editTestStatus', null);
-}
 
-// ─── Init ─────────────────────────────────────────────────
-selectPlatformTab('sn');
+    // ─── Edit Modal ───────────────────────────────────────────────
+    function openEditModalFromKebab(btn) {
+        closeAllKebabs();
+        const id = btn.dataset.id;
+        const platform = btn.dataset.platform;
+        const name = btn.dataset.name;
+        const instance = btn.dataset.instance;
+        const username = btn.dataset.username;
+        const loginUrl = btn.dataset.loginUrl || 'https://login.salesforce.com';
+
+        document.getElementById('editModal').classList.add('open');
+        document.getElementById('editForm').action = '/connections/' + id + '/edit';
+        document.getElementById('editPlatform').value = platform;
+        document.getElementById('editName').value = name;
+
+        const isSN = platform === 'sn';
+        document.getElementById('editSNFields').style.display = isSN ? '' : 'none';
+        document.getElementById('editSFFields').style.display = isSN ? 'none' : '';
+
+        if (isSN) {
+            document.getElementById('editInstance').value = instance || '';
+            document.getElementById('editUsername').value = username || '';
+            document.getElementById('editSNPassword').value = '';
+        } else {
+            document.getElementById('editLoginUrl').value = loginUrl;
+            document.getElementById('editSFUsername').value = username || '';
+            document.getElementById('editSFPassword').value = '';
+            document.getElementById('editSFToken').value = '';
+        }
+        setTestStatus('editTestStatus', null);
+    }
+
+    function closeEditModal() {
+        document.getElementById('editModal').classList.remove('open');
+    }
+
+    document.getElementById('editModal').addEventListener('click', function (e) {
+        if (e.target === this) closeEditModal();
+    });
+
+    function testEditConnection() {
+        const platform = document.getElementById('editPlatform').value;
+        let payload;
+        if (platform === 'sn') {
+            payload = {
+                platform: 'sn',
+                instance: document.getElementById('editInstance').value,
+                username: document.getElementById('editUsername').value,
+                password: document.getElementById('editSNPassword').value
+            };
+        } else {
+            payload = {
+                platform: 'sf',
+                login_url: document.getElementById('editLoginUrl').value,
+                username: document.getElementById('editSFUsername').value,
+                password: document.getElementById('editSFPassword').value,
+                security_token: document.getElementById('editSFToken').value
+            };
+        }
+        testConn(payload, 'editTestStatus', null);
+    }
+
+    // ─── Kebab menu logic ─────────────────────────────────────────
+    function closeAllKebabs() {
+        document.querySelectorAll('.kebab-dropdown').forEach(d => d.classList.remove('open'));
+        document.querySelectorAll('.kebab-confirm').forEach(c => c.classList.remove('visible'));
+        document.querySelectorAll('.conn-card').forEach(card => card.style.zIndex = '');
+    }
+
+    function toggleKebab(btn) {
+        const dropdown = btn.nextElementSibling;
+        const isOpen = dropdown.classList.contains('open');
+        const card = btn.closest('.conn-card');
+        closeAllKebabs();
+        if (!isOpen) {
+            dropdown.classList.add('open');
+            if (card) card.style.zIndex = '10';
+        }
+    }
+
+    function showDeleteConfirm(btn) {
+        const confirm = btn.closest('.kebab-dropdown').querySelector('.kebab-confirm');
+        confirm.classList.add('visible');
+        btn.style.display = 'none';
+    }
+
+    function hideDeleteConfirm(btn) {
+        const kebab = btn.closest('.kebab-dropdown');
+        kebab.querySelector('.kebab-confirm').classList.remove('visible');
+        kebab.querySelector('.kebab-item--danger').style.display = '';
+        closeAllKebabs();
+    }
+
+    // Close kebabs when clicking outside
+    document.addEventListener('click', function (e) {
+        if (!e.target.closest('.kebab-wrapper')) {
+            closeAllKebabs();
+        }
+    });
+
+    // ─── Init ─────────────────────────────────────────────────────
+    selectPlatformTab('sn');
 </script>
 {% endblock %}

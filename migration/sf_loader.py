@@ -139,14 +139,15 @@ class SalesforceLoader:
         if not records:
             return 0, 0, []
 
-        # Strategy 1: Bulk API 2.0 Ingest
-        try:
-            return self._bulk_insert(records)
-        except Exception as exc:
-            logger.warning(
-                "Bulk API 2.0 insert failed: %s. Trying SObject Collections…",
-                exc,
-            )
+        # Strategy 1: Bulk API 2.0 Ingest (for batches exceeding SObject Collections limit)
+        if len(records) > self.batch_size:
+            try:
+                return self._bulk_insert(records)
+            except Exception as exc:
+                logger.warning(
+                    "Bulk API 2.0 insert failed: %s. Trying SObject Collections…",
+                    exc,
+                )
 
         # Strategy 2: SObject Collections
         try:
@@ -172,8 +173,8 @@ class SalesforceLoader:
         if not records:
             return 0, 0, []
 
-        # Strategy 1: Bulk API 2.0 upsert (if we have external ID)
-        if self.external_id_field:
+        # Strategy 1: Bulk API 2.0 upsert (if we have external ID and batch exceeds collections limit)
+        if self.external_id_field and len(records) > self.batch_size:
             try:
                 return self._bulk_upsert(records)
             except Exception as exc:

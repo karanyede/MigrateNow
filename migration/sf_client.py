@@ -399,6 +399,16 @@ class SalesforceClient:
         for f in sf_fields:
             ref_to = f.get("referenceTo", [])
             reference = ref_to[0] if ref_to else ""
+            
+            choices = []
+            if f.get("type") in ("picklist", "multipicklist"):
+                for pv in f.get("picklistValues", []):
+                    if pv.get("active", True):
+                        choices.append({
+                            "value": pv.get("value", ""),
+                            "label": pv.get("label", "")
+                        })
+
             fields.append({
                 "name": f["name"],
                 "label": f.get("label", f["name"]),
@@ -408,6 +418,7 @@ class SalesforceClient:
                 "externalId": f.get("externalId", False),
                 "createable": f.get("createable", False),
                 "updateable": f.get("updateable", False),
+                "choices": choices,
             })
 
         # Sort alphabetically by name
@@ -491,6 +502,7 @@ class SalesforceClient:
         object_name: str,
         fields: list[str],
         query_filter: str = "",
+        limit: int | None = None,
     ) -> str:
         """
         Create a Bulk API 2.0 Query job.
@@ -502,6 +514,8 @@ class SalesforceClient:
         if query_filter:
             soql += f" WHERE {query_filter}"
         soql += " ORDER BY Id"
+        if limit is not None:
+            soql += f" LIMIT {limit}"
 
         resp = self._request(
             "POST",
