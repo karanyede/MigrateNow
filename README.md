@@ -1,7 +1,6 @@
-# MigrateNow — Enterprise Data Migration Workbench
 
 <p align="center">
-  <img src="static/images/MigrateNow_Favicon.png" alt="MigrateNow Logo" width="120" style="border-radius: 12px; margin-bottom: 1rem;">
+  <img src="static/images/MigrateNow_Logo.png" alt="MigrateNow Logo" width="500" style="border-radius: 12px; margin-bottom: 1rem;">
 </p>
 
 MigrateNow is a robust, intuitive web-based workbench designed for high-volume data migrations between **ServiceNow** and **Salesforce**. Built with a Python/Flask backend and a modern glassmorphic frontend, it simplifies cross-platform schema translation, field mapping, and bulk data load operations into a seamless, guided workflow.
@@ -9,8 +8,6 @@ MigrateNow is a robust, intuitive web-based workbench designed for high-volume d
 ---
 
 ## 📸 Screenshots
-
-*(Add your screenshots below to make the repository more appealing)*
 
 ### Dashboard
 <p align="center">
@@ -22,20 +19,33 @@ MigrateNow is a robust, intuitive web-based workbench designed for high-volume d
   <img src="static/images/screenshots/connections.png" alt="Saved Connections" width="800" style="border-radius: 8px;">
 </p>
 
-### Field Mapping
+### Migration History
 <p align="center">
-  <img src="static/images/screenshots/field_mapping.png" alt="Field Mapping" width="800" style="border-radius: 8px;">
+  <img src="static/images/screenshots/history.png" alt="Migration History" width="800" style="border-radius: 8px;">
 </p>
 
 ---
 
 ## ⚡ Key Features
 
-- **Multi-Directional**: Seamless data transfer across all four ServiceNow and Salesforce vectors.
-- **Auto-Discovery & Mapping**: On-the-fly schema detection, visual UI mapping, and CSV mapping uploads.
-- **Smart Diffing**: Automatically detects inserts, updates, and skips while ignoring read-only system fields.
-- **Async Execution**: Non-blocking background worker threads handle massive bulk loads.
-- **Live Tracking**: Real-time progress and count streams to the UI via Server-Sent Events (SSE).
+- **Multi-Directional**: 
+  - ServiceNow ➔ ServiceNow
+  - ServiceNow ➔ Salesforce
+  - Salesforce ➔ Salesforce
+  - Salesforce ➔ ServiceNow
+- **Auto-Discovery & Mapping**: 
+  - Auto + manual mapping
+  - CSV Based mapping
+- **Smart Diffing**: 
+  - Auto detects inserts, updates, and skips
+  - Auto detect and skip read-only fields.
+- **Async Execution**: 
+  - Multithreded bulk uploads.
+  - Partitioned parallel exports
+  
+- **Live Tracking**: 
+  - Server-Sent Events (SSE) for real-time progress updates.
+  - Stream counts (Records, success, errors, skipped)
 
 ---
 
