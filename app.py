@@ -72,6 +72,7 @@ logger = setup_logging()
 
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET
+app.config["TEMPLATES_AUTO_RELOAD"] = True
 
 @app.template_filter('numberFormat')
 def number_format(value):
@@ -219,9 +220,10 @@ def _save_migration_config_from_session() -> str:
     field_mapping = session.get("field_mapping", {})
     filter_conditions = session.get("filter_conditions", [])
     fetch_mode = session.get("fetch_mode", "auto")
+    limit = session.get("limit")
 
     # Generate a descriptive name
-    name = f"{source_table} \u2794 {target_table} ({mt.replace('_', '\u2794').upper()})"
+    name = f"{source_table} ➔ {target_table} ({mt.replace('_', '➔').upper()})"
 
     # Look for duplicate config
     existing = None
@@ -231,7 +233,8 @@ def _save_migration_config_from_session() -> str:
             c.get("target_table") == target_table and
             c.get("field_mapping") == field_mapping and
             c.get("filter_conditions") == filter_conditions and
-            c.get("fetch_mode") == fetch_mode):
+            c.get("fetch_mode") == fetch_mode and
+            c.get("limit") == limit):
             
             if source_is_sn and c.get("source_instance") != session.get("source_instance"):
                 continue
@@ -257,6 +260,7 @@ def _save_migration_config_from_session() -> str:
             "field_mapping": field_mapping,
             "filter_conditions": filter_conditions,
             "fetch_mode": fetch_mode,
+            "limit": limit,
             "created_at": now_iso,
             "last_run_at": now_iso
         }
@@ -643,7 +647,12 @@ def fields():
             if is_sf:
                 results[role] = client.get_object_fields(table)
             else:
-                results[role] = client.get_table_fields(table)
+                fields = client.get_table_fields(table)
+                # Fetch choice metadata and merge
+                choices_map = client.get_choice_values(table)
+                for f in fields:
+                    f["choices"] = choices_map.get(f["name"], [])
+                results[role] = fields
         except Exception as exc:
             results[role] = exc
 
@@ -736,6 +745,7 @@ def fields():
         auto_count=len(auto_map),
         manual_count=manual_count,
         filter_conditions=session.get("filter_conditions", []),
+        limit=session.get("limit"),
     )
 
 
@@ -769,14 +779,25 @@ def map_fields():
     except Exception:
         session["filter_conditions"] = []
 
+    # Read and store limit
+    limit_str = request.form.get("limit", "").strip()
+    if limit_str:
+        try:
+            session["limit"] = int(limit_str)
+        except ValueError:
+            session["limit"] = None
+    else:
+        session["limit"] = None
+
     # Auto-save migration config!
     _save_migration_config_from_session()
 
     logger.info(
-        "Field mapping: %s | Fetch mode: %s | Filters: %s",
+        "Field mapping: %s | Fetch mode: %s | Filters: %s | Limit: %s",
         field_mapping,
         session["fetch_mode"],
         session["filter_conditions"],
+        session["limit"],
     )
     return redirect(url_for("migrate"))
 
@@ -1099,6 +1120,7 @@ def migrate_repeat(config_id):
     session["field_mapping"] = cfg["field_mapping"]
     session["filter_conditions"] = cfg.get("filter_conditions", [])
     session["fetch_mode"] = cfg.get("fetch_mode", "auto")
+    session["limit"] = cfg.get("limit")
 
     # Load source connection credentials into session
     if source_is_sn:
@@ -1188,6 +1210,7 @@ def migrate_confirm():
         field_count=len(mapping),
         filter_conditions=session.get("filter_conditions", []),
         fetch_mode=session.get("fetch_mode", "auto"),
+        limit=session.get("limit"),
     )
 
 
@@ -1212,6 +1235,7 @@ def migrate():
         "source_fields_meta": session.get("_source_fields", []),
         "fetch_mode": session.get("fetch_mode", "auto"),
         "filter_conditions": session.get("filter_conditions", []),
+        "limit": session.get("limit"),
     }
 
     # SN credentials
@@ -1383,6 +1407,7 @@ def _run_migration(ctx: dict):
             sf_external_id_field=sf_external_id_field,
             filter_conditions=ctx.get("filter_conditions"),
             pause_event=_pause_event,
+            limit=ctx.get("limit"),
         )
 
         report = orchestrator.run()

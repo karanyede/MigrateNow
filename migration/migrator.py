@@ -201,6 +201,7 @@ class MigrationOrchestrator:
         sf_external_id_field: str | None = None,
         filter_conditions: list | None = None,
         pause_event: threading.Event | None = None,
+        limit: int | None = None,
     ) -> None:
         self.src = source_client
         self.tgt = target_client
@@ -214,6 +215,7 @@ class MigrationOrchestrator:
         self.sf_external_id_field = sf_external_id_field
         self.filter_conditions = filter_conditions or []
         self.pause_event = pause_event
+        self.limit = limit
         # Build {field_name: ref_table} for reference fields in the mapping
         self._ref_fields: dict[str, str] = {}
         if source_fields_meta and self._is_source_sn:
@@ -572,7 +574,7 @@ class MigrationOrchestrator:
                 fields=source_fields,
                 extra_query=self._build_sn_query(self.filter_conditions),
             )
-            records = csv_fetcher.fetch_all()
+            records = csv_fetcher.fetch_all(limit=self.limit)
 
             if records:
                 logger.info(
@@ -612,7 +614,7 @@ class MigrationOrchestrator:
             page_size=FETCH_PAGE_SIZE,
             extra_query=self._build_sn_query(self.filter_conditions),
         )
-        return fetcher.fetch_all()
+        return fetcher.fetch_all(limit=self.limit)
 
     # ─────────────────────────────────────────────────────────────────
     # Main entry point
@@ -632,6 +634,7 @@ class MigrationOrchestrator:
                 object_name=self.src_table,
                 fields=source_fields,
                 extra_where=self._build_sf_where(self.filter_conditions),
+                limit=self.limit,
             )
             records = fetcher.fetch_all()
             if records:
@@ -655,6 +658,8 @@ class MigrationOrchestrator:
         if extra_where:
             soql += f" WHERE {extra_where}"
         soql += " ORDER BY Id"
+        if self.limit is not None:
+            soql += f" LIMIT {self.limit}"
         return self.src.query(soql)
 
     def run(self) -> MigrationReport:

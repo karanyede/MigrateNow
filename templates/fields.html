@@ -254,6 +254,13 @@
                 </svg>
                 Select auto-matched
             </button>
+            <label class="toggle-btn" for="csvUpload" style="cursor:pointer; margin-bottom:0;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="width:13px;height:13px">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+                </svg>
+                Upload CSV Mapping
+            </label>
+            <input type="file" id="csvUpload" accept=".csv" style="display:none;">
         </div>
 
         <!-- Mapping Table -->
@@ -278,10 +285,7 @@
                         </td>
                         <!-- Source field -->
                         <td>
-                            <span class="field-name">{{ sf.name }}</span>
-                            {% if sf.label and sf.label != sf.name %}
-                            <br><span class="field-label">{{ sf.label }}</span>
-                            {% endif %}
+                            <span class="field-label" style="font-weight: 600; color: var(--text-primary);">{{ sf.label or sf.name }}</span>
                             {% if sf.reference %}
                             <br><span
                                 style="color:var(--amber);font-size:0.7rem; font-family:'JetBrains Mono',monospace;">↗
@@ -295,7 +299,7 @@
                                 {% for tf in target_fields %}
                                 <option value="{{ tf.name }}" {% if auto_map.get(sf.name)==tf.name %}selected{% endif
                                     %}>
-                                    {{ tf.name }}{% if tf.label and tf.label != tf.name %} ({{ tf.label }}){% endif %}
+                                    {{ tf.label or tf.name }}
                                 </option>
                                 {% endfor %}
                             </select>
@@ -379,8 +383,12 @@
 
         <div id="filterBuilder"></div>
 
-        <div style="display:flex;justify-content:flex-end;margin-top:0.5rem;">
-            <button type="button" id="btnClearFilters" class="btn btn-secondary btn-sm">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:1rem; border-top:1px solid var(--border-hairline); padding-top:1rem;">
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+                <div style="width:28px; flex-shrink:0;"></div>
+                <input type="number" id="filterLimit" name="limit" class="form-input" style="width:100px; height:32px; font-size:0.8rem; padding:0 0.5rem; background: var(--surface-3); border: 1px solid var(--border-moderate); border-radius: var(--radius-xs); color: var(--text-primary); outline: none;" min="1" placeholder="Limit">
+            </div>
+            <button type="button" id="btnClearFilters" class="btn btn-secondary btn-sm" style="height:32px;">
                 Clear All
             </button>
         </div>
@@ -436,6 +444,60 @@
                     if (cb) cb.checked = true;
                 }
             });
+        });
+
+        // ── CSV Upload mapping ────────────────────────────────
+        document.getElementById('csvUpload')?.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                const text = evt.target.result;
+                const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+                if (lines.length === 0) return;
+
+                let appliedCount = 0;
+                for (let i = 0; i < lines.length; i++) {
+                    const parts = lines[i].split(',').map(s => s.trim());
+                    if (parts.length < 2) continue;
+                    
+                    const sourceField = parts[0];
+                    const targetField = parts[1];
+
+                    if (sourceField.toLowerCase() === 'source_field' && targetField.toLowerCase() === 'target_field') {
+                        continue; // skip header
+                    }
+
+                    const row = document.querySelector(`tr[data-source-field="${sourceField}"]`);
+                    if (row) {
+                        const sel = row.querySelector('.mapping-select');
+                        if (sel) {
+                            let optionExists = false;
+                            for (let opt of sel.options) {
+                                if (opt.value === targetField) {
+                                    optionExists = true;
+                                    break;
+                                }
+                            }
+
+                            if (optionExists && sel.value !== targetField) {
+                                sel.value = targetField;
+                                sel.dispatchEvent(new Event('change'));
+                                appliedCount++;
+                            }
+                        }
+                    }
+                }
+                
+                e.target.value = '';
+                if (appliedCount > 0) {
+                    showToast(`Applied ${appliedCount} field mapping(s) from CSV.`, 'success');
+                } else {
+                    showToast('No valid matching fields found in the CSV, or they are already mapped.', 'error');
+                }
+            };
+            reader.readAsText(file);
         });
 
         // ── Auto-check include when mapping changes ───────────
@@ -628,16 +690,29 @@
 
         const noValueOps = new Set(['EMPTY', 'NOTEMPTY', 'IS NULL', 'IS NOT NULL']);
 
+        function isBooleanField(fieldObj) {
+            if (!fieldObj) return false;
+            const type = (fieldObj.type || '').toLowerCase();
+            const hasBoolType = type === 'boolean' || type === 'bool' || type === 'true_false' || type === 'checkbox';
+            if (hasBoolType) return true;
+            
+            if (fieldObj.choices && fieldObj.choices.length === 2) {
+                const values = fieldObj.choices.map(c => String(c.value).toLowerCase());
+                const hasTrueLike = values.includes('true') || values.includes('yes') || values.includes('y') || values.includes('1');
+                const hasFalseLike = values.includes('false') || values.includes('no') || values.includes('n') || values.includes('0');
+                if (hasTrueLike && hasFalseLike) return true;
+            }
+            return false;
+        }
+
         function getOperatorsForField(fieldObj) {
             if (!fieldObj) return operators;
-            const type = (fieldObj.type || '').toLowerCase();
-            const isBool = type === 'boolean' || type === 'bool';
-            if (isBool) {
+            if (isBooleanField(fieldObj)) {
                 return [
-                    { val: '=', label: 'is' },
-                    { val: '!=', label: 'is not' }
+                    { val: '=', label: 'is' }
                 ];
             }
+            const type = (fieldObj.type || '').toLowerCase();
             const isNumeric = ['integer', 'long', 'double', 'decimal', 'float', 'number', 'int'].includes(type);
             if (isNumeric) {
                 return isSourceSF
@@ -667,7 +742,7 @@
 
         function renderFieldOptions(selectedField) {
             return sourceFields.map(f =>
-                `<option value="${f.name}" ${f.name === selectedField ? 'selected' : ''}>${f.name}${f.label && f.label !== f.name ? ' (' + f.label + ')' : ''}</option>`
+                `<option value="${f.name}" ${f.name === selectedField ? 'selected' : ''}>${f.label || f.name}</option>`
             ).join('');
         }
 
@@ -721,22 +796,40 @@
                     
                     const noVal = noValueOps.has(cond.op);
                     const fieldObj = sourceFields.find(f => f.name === cond.field);
-                    const type = fieldObj ? (fieldObj.type || '').toLowerCase() : '';
-                    const isBool = type === 'boolean' || type === 'bool';
+                    const isBool = isBooleanField(fieldObj);
+                    const hasChoices = fieldObj && fieldObj.choices && fieldObj.choices.length > 0;
 
                     let valueHtml = '';
                     if (noVal) {
                         valueHtml = `<input type="text" class="fc-val" style="display:none" data-gi="${gi}" data-ci="${ci}">`;
                     } else if (isBool) {
-                        if (cond.value !== 'true' && cond.value !== 'false') {
-                            cond.value = 'true';
+                        cond.op = '='; // Force operator to '='
+                        if (hasChoices) {
+                            if (cond.value !== 'true' && cond.value !== 'false' && !fieldObj.choices.some(c => String(c.value) === cond.value)) {
+                                cond.value = fieldObj.choices[0].value;
+                            }
+                            let optionsHtml = '';
+                            fieldObj.choices.forEach(c => {
+                                optionsHtml += `<option value="${c.value}" ${cond.value === String(c.value) ? 'selected' : ''}>${c.label || c.value}</option>`;
+                            });
+                            valueHtml = `<select class="fc-val" data-gi="${gi}" data-ci="${ci}">${optionsHtml}</select>`;
+                        } else {
+                            if (cond.value !== 'true' && cond.value !== 'false') {
+                                cond.value = 'true';
+                            }
+                            valueHtml = `
+                                <select class="fc-val" data-gi="${gi}" data-ci="${ci}">
+                                    <option value="true" ${cond.value === 'true' ? 'selected' : ''}>True</option>
+                                    <option value="false" ${cond.value === 'false' ? 'selected' : ''}>False</option>
+                                </select>
+                            `;
                         }
-                        valueHtml = `
-                            <select class="fc-val" data-gi="${gi}" data-ci="${ci}">
-                                <option value="true" ${cond.value === 'true' ? 'selected' : ''}>True</option>
-                                <option value="false" ${cond.value === 'false' ? 'selected' : ''}>False</option>
-                            </select>
-                        `;
+                    } else if (hasChoices) {
+                        let optionsHtml = '<option value="">-- choose value --</option>';
+                        fieldObj.choices.forEach(c => {
+                            optionsHtml += `<option value="${c.value}" ${cond.value === String(c.value) ? 'selected' : ''}>${c.label || c.value}</option>`;
+                        });
+                        valueHtml = `<select class="fc-val" data-gi="${gi}" data-ci="${ci}">${optionsHtml}</select>`;
                     } else {
                         valueHtml = `
                             <div class="fc-val-container" style="position: relative; display: inline-block; width: 140px;">
@@ -747,13 +840,14 @@
                         `;
                     }
 
+                    const opStyle = isBool ? 'style="display:none;"' : '';
                     const fieldsHtml = `
                         <div class="filter-row-fields">
                             <select class="fc-field" data-gi="${gi}" data-ci="${ci}">
                                 <option value="">-- choose field --</option>
                                 ${renderFieldOptions(cond.field)}
                             </select>
-                            <select class="fc-op" data-gi="${gi}" data-ci="${ci}">
+                            <select class="fc-op" data-gi="${gi}" data-ci="${ci}" ${opStyle}>
                                 <option value="">-- oper --</option>
                                 ${renderOpOptions(cond.field, cond.op)}
                             </select>

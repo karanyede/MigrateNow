@@ -196,12 +196,6 @@
     </svg>
     Start Migration
 </a>
-<a href="{{ url_for('history') }}" class="btn btn-secondary btn-sm">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="width:14px;height:14px">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
-    </svg>
-    History
-</a>
 {% endblock %}
 
 {% block content %}
@@ -424,11 +418,13 @@
                         </span>
                     </td>
                     <td>
-                        <span class="instance-name">{{ (h.source_instance or '').replace('.service-now.com','').replace('.salesforce.com','') }}</span>
+                        {% set src_inst = (h.source_instance or '').replace('.service-now.com','').replace('.salesforce.com','') %}
+                        {% set tgt_inst = (h.target_instance or '').replace('.service-now.com','').replace('.salesforce.com','') %}
+                        <span class="instance-name" title="{{ src_inst }}">{{ src_inst[:8] ~ '...' ~ src_inst[-8:] if src_inst|length > 18 else src_inst }}</span>
                         <span style="color:var(--text-muted);"> / </span>
                         <span class="table-name">{{ h.source_table or '' }}</span>
                         <span style="color:var(--text-muted);"> → </span>
-                        <span class="instance-name">{{ (h.target_instance or '').replace('.service-now.com','').replace('.salesforce.com','') }}</span>
+                        <span class="instance-name" title="{{ tgt_inst }}">{{ tgt_inst[:8] ~ '...' ~ tgt_inst[-8:] if tgt_inst|length > 18 else tgt_inst }}</span>
                         <span style="color:var(--text-muted);"> / </span>
                         <span class="table-name">{{ h.target_table or '' }}</span>
                     </td>

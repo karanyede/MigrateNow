@@ -71,8 +71,10 @@ class CsvExportFetcher:
     # Public API
     # ─────────────────────────────────────────────────────────────────
 
-    def fetch_all(self, parallel: bool = True, max_workers: int = MAX_WORKERS_CSV) -> List[dict]:
+    def fetch_all(self, parallel: bool = True, max_workers: int = MAX_WORKERS_CSV, limit: int | None = None) -> List[dict]:
         """Fetch all records, optionally using parallel partitioned export."""
+        if limit is not None:
+            return self._fetch_all_serial(limit=limit)
         if parallel and self.client.instance:
             try:
                 return self._fetch_all_parallel(max_workers)
@@ -149,7 +151,7 @@ class CsvExportFetcher:
     # Serial keyset‑paginated CSV (original implementation)
     # ─────────────────────────────────────────────────────────────────
 
-    def _fetch_all_serial(self) -> List[dict]:
+    def _fetch_all_serial(self, limit: int | None = None) -> List[dict]:
         """
         Fetch every record using serial keyset-paginated CSV.
         Original implementation – reliable fallback.
@@ -160,6 +162,11 @@ class CsvExportFetcher:
         t_total = time.perf_counter()
 
         while True:
+            if limit is not None:
+                remaining = limit - len(all_records)
+                if remaining <= 0:
+                    break
+
             chunk_num += 1
             t0 = time.perf_counter()
 
@@ -203,6 +210,11 @@ class CsvExportFetcher:
                         self.table,
                     )
                 break
+
+            if limit is not None:
+                remaining = limit - len(all_records)
+                if len(chunk_records) > remaining:
+                    chunk_records = chunk_records[:remaining]
 
             all_records.extend(chunk_records)
             last_id = chunk_records[-1]["sys_id"]

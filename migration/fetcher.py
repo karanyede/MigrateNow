@@ -54,21 +54,28 @@ class BulkFetcher:
     # Generator API
     # ─────────────────────────────────────────────────────────────────
 
-    def pages(self) -> Generator[list[dict], None, None]:
+    def pages(self, limit: int | None = None) -> Generator[list[dict], None, None]:
         """
         Yield one page of records at a time.
 
-        Stops when ServiceNow returns an empty page.
+        Stops when ServiceNow returns an empty page or the limit is reached.
         """
         last_id = ""
         page_num = 0
         total_rows = 0
 
         while True:
+            current_limit = self.page_size
+            if limit is not None:
+                remaining = limit - total_rows
+                if remaining <= 0:
+                    break
+                current_limit = min(self.page_size, remaining)
+
             page = self.client.fetch_page(
                 table_name=self.table,
                 last_sys_id=last_id,
-                limit=self.page_size,
+                limit=current_limit,
                 fields=self.fields,
                 extra_query=self.extra_query,
             )
@@ -112,14 +119,14 @@ class BulkFetcher:
             page_num,
         )
 
-    def fetch_all(self) -> list[dict]:
+    def fetch_all(self, limit: int | None = None) -> list[dict]:
         """
         Convenience: collect every page into a single list.
 
         Use ``pages()`` instead if memory is a concern.
         """
         all_records: list[dict] = []
-        for page in self.pages():
+        for page in self.pages(limit=limit):
             all_records.extend(page)
         return all_records
 
