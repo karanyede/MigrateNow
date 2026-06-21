@@ -47,19 +47,19 @@
 <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:0.75rem; margin-bottom:1.25rem;">
     <div class="stat-summary-card" style="padding:1rem 1.25rem;">
         <div class="stat-summary-card__label">Total Runs</div>
-        <div class="stat-summary-card__value">{{ total }}</div>
-    </div>
-    <div class="stat-summary-card stat-summary-card--success" style="padding:1rem 1.25rem;">
-        <div class="stat-summary-card__label">Successful</div>
-        <div class="stat-summary-card__value stat-summary-card__value--success">{{ success_n.val }}</div>
+        <div class="stat-summary-card__value" data-count="{{ total }}">{{ total }}</div>
     </div>
     <div class="stat-summary-card stat-summary-card--amber" style="padding:1rem 1.25rem;">
         <div class="stat-summary-card__label">Records Moved</div>
-        <div class="stat-summary-card__value">{{ records_n.val | int }}</div>
+        <div class="stat-summary-card__value" data-count="{{ records_n.val }}">{{ records_n.val | int }}</div>
+    </div>
+    <div class="stat-summary-card stat-summary-card--success" style="padding:1rem 1.25rem;">
+        <div class="stat-summary-card__label">Successful</div>
+        <div class="stat-summary-card__value stat-summary-card__value--success" data-count="{{ success_n.val }}">{{ success_n.val }}</div>
     </div>
     <div class="stat-summary-card" style="padding:1rem 1.25rem;">
         <div class="stat-summary-card__label">Failed</div>
-        <div class="stat-summary-card__value"
+        <div class="stat-summary-card__value" data-count="{{ failed_n.val }}"
             style="color:var(--rose);-webkit-text-fill-color:var(--rose);background:none;">{{ failed_n.val }}</div>
     </div>
 </div>
