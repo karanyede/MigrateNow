@@ -1,0 +1,220 @@
+/* ═══════════════════════════════════════════════════════════════════
+   RESPONSIVE  — Unified 4-breakpoint system
+   1280 → 1024 → 768 → 480
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── ≤ 1280px  Large laptop / smaller desktop ─────────────────────
+   Tighten page padding so content doesn't feel pinched on 1366px
+   screens, and begin collapsing the heaviest grids.                */
+@media (max-width: 1280px) {
+    .page-content {
+        padding: 1.5rem 2rem;
+    }
+
+    /* 5-col results grid → 4 col */
+    .results-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+
+    /* Migrate pipeline/logs side-by-side grid (inline in migrate.html) */
+    .migrate-pipeline-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* ── ≤ 1024px  Standard laptop (1280×800, 1366×768) ───────────────
+   Sidebar shrinks, key grids go 2-col.                             */
+@media (max-width: 1024px) {
+    :root {
+        --sidebar-w: 200px;
+    }
+
+    .page-content {
+        padding: 1.25rem 1.5rem;
+    }
+
+    /* 4-col KPI strip → 2-col */
+    .dashboard-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    /* results 5-col → 3-col */
+    .results-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    /* 3fr/2fr migrate layout → equal halves */
+    .migrate-layout {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    /* fetch strategy 3-col → 2-col */
+    .fetch-strategy-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    /* history detail header */
+    .history-detail-header {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    /* field toolbar wraps on narrow laptops */
+    .field-toolbar {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    /* wizard bar labels truncate */
+    .wizard-flow-step__label {
+        font-size: 0.72rem;
+    }
+
+    /* page header padding */
+    .page-header {
+        padding: 0 1.5rem;
+    }
+}
+
+/* ── ≤ 768px  Tablet / collapsed sidebar ──────────────────────────
+   Sidebar collapses to icon-only, most grids go single-column.    */
+@media (max-width: 768px) {
+    :root {
+        --sidebar-w: 56px;
+    }
+
+    /* Sidebar collapse to icons */
+    .sidebar-logo__text,
+    .sidebar-section-label,
+    .sidebar-item__label,
+    .sidebar-footer,
+    .sidebar-migration-section {
+        display: none;
+    }
+
+    .sidebar-logo {
+        justify-content: center;
+        padding: 1rem;
+    }
+
+    .sidebar-item {
+        justify-content: center;
+        padding: 0.7rem;
+    }
+
+    .sidebar-item__icon {
+        opacity: 1;
+    }
+
+    /* Layout */
+    .page-content {
+        padding: 1rem;
+    }
+
+    .page-header {
+        padding: 0 1rem;
+    }
+
+    /* All major grids → single column */
+    .connect-panels,
+    .tables-panels,
+    .migrate-layout,
+    .migrate-pipeline-grid,
+    .fetch-strategy-grid,
+    .form-row,
+    .api-summary,
+    .migration-type-grid,
+    .history-detail-header,
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* tables connector loses top padding when stacked */
+    .tables-connector {
+        padding-top: 0;
+    }
+
+    /* KPI strip 4-col → 2-col */
+    .dashboard-stats {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    /* results 5-col → 2-col */
+    .results-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    /* Connection registry 2-col → 1-col */
+    .connection-registry-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* field filter row stacks */
+    .filter-row {
+        flex-wrap: wrap;
+    }
+
+    .fc-field { width: 100%; }
+    .fc-op    { width: 130px; }
+    .fc-val   { width: 130px; }
+
+    /* field toolbar stacks */
+    .field-toolbar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    /* mapping table min-width for horizontal scroll */
+    .mapping-table {
+        min-width: 480px;
+    }
+
+    /* wizard bar: tighter */
+    .wizard-flow-bar {
+        padding: 0.5rem 0;
+        gap: 0;
+    }
+
+    .wizard-flow-step {
+        padding: 0.4rem 0.5rem;
+        gap: 0.35rem;
+    }
+
+    .wizard-flow-step__label {
+        font-size: 0.68rem;
+    }
+}
+
+/* ── ≤ 480px  Small mobile ─────────────────────────────────────── */
+@media (max-width: 480px) {
+    /* KPI strip → 1-col */
+    .dashboard-stats {
+        grid-template-columns: 1fr;
+    }
+
+    /* results → 2-col (they're small cards, readable at 2) */
+    .results-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    /* stat summary cards tighter padding */
+    .stat-summary-card {
+        padding: 1.1rem 1rem;
+    }
+
+    /* page header: hide breadcrumb to save space */
+    .page-header__breadcrumb {
+        display: none;
+    }
+
+    /* filter rows fully stacked */
+    .fc-field,
+    .fc-op,
+    .fc-val {
+        width: 100%;
+    }
+
+    /* hide wizard labels entirely */
+    .wizard-flow-step__label {
+        display: none;
+    }
+}
