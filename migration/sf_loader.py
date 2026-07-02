@@ -34,6 +34,7 @@ class SFLoadResult:
     updated: int = 0
     failed: int = 0
     failed_records: list[dict] = field(default_factory=list)
+    inserted_ids: list[str] = field(default_factory=list)  # target-assigned SF Ids
     elapsed_seconds: float = 0.0
     batch_count: int = 0
 
@@ -103,10 +104,11 @@ class SalesforceLoader:
 
         # ── Phase 1: Inserts ─────────────────────────────────────────
         if inserts:
-            ok, fail, failed_recs = self._execute_inserts(inserts)
+            ok, fail, failed_recs, ins_ids = self._execute_inserts(inserts)
             result.inserted += ok
             result.failed += fail
             result.failed_records.extend(failed_recs)
+            result.inserted_ids.extend(ins_ids)
             result.batch_count += 1
 
         # ── Phase 2: Updates (upsert if we have external ID) ─────────
@@ -134,10 +136,10 @@ class SalesforceLoader:
 
     def _execute_inserts(
         self, records: list[dict]
-    ) -> tuple[int, int, list[dict]]:
+    ) -> tuple[int, int, list[dict], list[str]]:
         """Insert records using cascading strategy."""
         if not records:
-            return 0, 0, []
+            return 0, 0, [], []
 
         # Strategy 1: Bulk API 2.0 Ingest (for batches exceeding SObject Collections limit)
         if len(records) > self.batch_size:
@@ -239,13 +241,13 @@ class SalesforceLoader:
 
     def _bulk_insert(
         self, records: list[dict]
-    ) -> tuple[int, int, list[dict]]:
+    ) -> tuple[int, int, list[dict], list[str]]:
         """Insert via Bulk API 2.0 Ingest."""
         mapped_records = [self._apply_mapping(rec) for rec in records]
 
         # Determine CSV fields from the first record
         if not mapped_records:
-            return 0, 0, []
+            return 0, 0, [], []
         csv_fields = list(mapped_records[0].keys())
 
         # Create job
@@ -264,7 +266,11 @@ class SalesforceLoader:
         # Get results
         results = self.client.bulk_ingest_results(job_id)
 
-        ok = len(results.get("successfulResults", []))
+        successful = results.get("successfulResults", [])
+        ok = len(successful)
+        # Capture the SF-assigned Ids for rollback
+        inserted_ids = [row.get("sf__Id", "") for row in successful if row.get("sf__Id")]
+
         failed_list = results.get("failedResults", [])
         fail = len(failed_list)
 
@@ -285,7 +291,7 @@ class SalesforceLoader:
             ok, fail,
         )
         self._report_progress(len(records), "insert")
-        return ok, fail, failed_records
+        return ok, fail, failed_records, inserted_ids
 
     # ── Bulk API 2.0 Upsert ──────────────────────────────────────────
 
@@ -344,10 +350,11 @@ class SalesforceLoader:
 
     def _collections_insert(
         self, records: list[dict]
-    ) -> tuple[int, int, list[dict]]:
+    ) -> tuple[int, int, list[dict], list[str]]:
         """Insert via SObject Collections (200 per call)."""
         ok, fail = 0, 0
         failed_records: list[dict] = []
+        inserted_ids: list[str] = []
 
         for chunk in self._chunks(records, self.batch_size):
             mapped_chunk = [self._apply_mapping(rec) for rec in chunk]
@@ -359,6 +366,9 @@ class SalesforceLoader:
                 for i, r in enumerate(results):
                     if r.get("success"):
                         ok += 1
+                        sf_id = r.get("id", "")
+                        if sf_id:
+                            inserted_ids.append(sf_id)
                     else:
                         fail += 1
                         error_msg = r.get("errors", [{}])[0].get("message", "unknown")
@@ -379,7 +389,7 @@ class SalesforceLoader:
         logger.info(
             "SObject Collections insert: %d OK, %d failed.", ok, fail
         )
-        return ok, fail, failed_records
+        return ok, fail, failed_records, inserted_ids
 
     # ── SObject Collections Update ───────────────────────────────────
 
@@ -432,10 +442,11 @@ class SalesforceLoader:
 
     def _single_insert(
         self, records: list[dict]
-    ) -> tuple[int, int, list[dict]]:
+    ) -> tuple[int, int, list[dict], list[str]]:
         """Insert one-by-one (last resort)."""
         ok, fail = 0, 0
         failed_records: list[dict] = []
+        inserted_ids: list[str] = []
 
         for rec in records:
             mapped = self._apply_mapping(rec)
@@ -445,6 +456,9 @@ class SalesforceLoader:
                 )
                 if results and results[0].get("success"):
                     ok += 1
+                    sf_id = results[0].get("id", "")
+                    if sf_id:
+                        inserted_ids.append(sf_id)
                 else:
                     fail += 1
                     failed_records.append(rec)
@@ -456,7 +470,7 @@ class SalesforceLoader:
                 failed_records.append(rec)
             self._report_progress(1, "insert")
 
-        return ok, fail, failed_records
+        return ok, fail, failed_records, inserted_ids
 
     def _single_update(
         self, records: list[dict]

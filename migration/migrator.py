@@ -39,6 +39,7 @@ from migration.differ import DiffEngine
 from migration.fetcher import BulkFetcher
 from migration.loader import BulkLoader, LoadResult
 from migration.rate_tracker import RateTracker
+from migration.rollback_store import RollbackStore
 from migration.sf_client import SalesforceClient
 from migration.sf_bulk_fetcher import SalesforceBulkFetcher
 from migration.sf_loader import SalesforceLoader, SFLoadResult
@@ -202,6 +203,8 @@ class MigrationOrchestrator:
         filter_conditions: list | None = None,
         pause_event: threading.Event | None = None,
         limit: int | None = None,
+        rollback_store: RollbackStore | None = None,
+        rollback_job_id: str | None = None,
     ) -> None:
         self.src = source_client
         self.tgt = target_client
@@ -216,6 +219,8 @@ class MigrationOrchestrator:
         self.filter_conditions = filter_conditions or []
         self.pause_event = pause_event
         self.limit = limit
+        self.rollback_store = rollback_store
+        self.rollback_job_id = rollback_job_id
         # Build {field_name: ref_table} for reference fields in the mapping
         self._ref_fields: dict[str, str] = {}
         if source_fields_meta and self._is_source_sn:
@@ -716,6 +721,17 @@ class MigrationOrchestrator:
             f"Fetched {len(source_records):,} source records via {fetch_mode_used.upper()}.",
         )
 
+        # Edge case: no source records after applying filters — finish early.
+        if not source_records:
+            logger.info(
+                "No source records found for %s.%s — marking migration complete.",
+                self.src.instance, self.src_table,
+            )
+            report.timing.total = time.perf_counter() - t_total
+            report.api_calls = self.tracker.summary()
+            self._emit("done", 1, 1, "Migration complete (no source records).")
+            return report
+
         # ── 1b. Resolve reference fields cross-instance ──────────────
         if self._ref_fields:
             self._emit(
@@ -936,6 +952,36 @@ class MigrationOrchestrator:
             f"{len(diff.inserts):,} to insert, {len(diff.updates):,} to update.",
         )
 
+        # ── 3b. Capture update pre-states for rollback (zero API cost) ──
+        # target_map is already in memory — we just read from it.
+        if self.rollback_store and self.rollback_job_id and diff.updates:
+            pre_states = []
+            for rec in diff.updates:
+                # Determine the key used to look up in target_map
+                if self._is_target_sf:
+                    coalesce_val = rec.get(self.sf_external_id_field or "Id", "")
+                    tgt_rec = target_map.get(coalesce_val, {})
+                    tgt_key = tgt_rec.get("Id", coalesce_val)
+                else:
+                    sid = rec.get("sys_id", "")
+                    tgt_rec = target_map.get(
+                        rec.get("_target_sys_id", sid), {}
+                    ) or target_map.get(sid, {})
+                    tgt_key = tgt_rec.get("sys_id", rec.get("_target_sys_id", sid))
+
+                if tgt_key and tgt_rec:
+                    pre_states.append({"target_key": tgt_key, "pre_state": tgt_rec})
+
+            if pre_states:
+                try:
+                    self.rollback_store.add_updates(self.rollback_job_id, pre_states)
+                    logger.info(
+                        "Rollback: captured pre-state for %d updates.",
+                        len(pre_states),
+                    )
+                except Exception as rb_exc:
+                    logger.warning("Rollback pre-state capture failed: %s", rb_exc)
+
         # ── 4. Bulk load ─────────────────────────────────────────────
         self._emit("load", 0, len(diff.inserts) + len(diff.updates), "Loading…")
         t0 = time.perf_counter()
@@ -978,6 +1024,24 @@ class MigrationOrchestrator:
             report.failed = load_result.failed
             failed_records = load_result.failed_records
         report.timing.load = time.perf_counter() - t0
+
+        # ── 4b. Save inserted IDs to rollback store ──────────────────
+        if self.rollback_store and self.rollback_job_id:
+            # Collect inserted_ids from whichever loader was used
+            if self._is_target_sf:
+                ins_ids = sf_result.inserted_ids  # type: ignore[union-attr]
+            else:
+                ins_ids = load_result.inserted_ids  # type: ignore[union-attr]
+
+            try:
+                if ins_ids:
+                    self.rollback_store.add_inserts(self.rollback_job_id, ins_ids)
+                    logger.info(
+                        "Rollback: captured %d inserted IDs.", len(ins_ids)
+                    )
+                self.rollback_store.mark_status(self.rollback_job_id, "captured")
+            except Exception as rb_exc:
+                logger.warning("Rollback insert-ID capture failed: %s", rb_exc)
 
         # ── 5. Save failed records ───────────────────────────────────
         if failed_records:

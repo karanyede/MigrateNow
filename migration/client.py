@@ -665,6 +665,19 @@ class ServiceNowClient:
         resp.raise_for_status()
         return resp.json().get("result", {}) if resp.text.strip() else {}
 
+    def delete_record(self, table_name: str, sys_id: str) -> None:
+        """
+        Delete a single record from *table_name* by *sys_id*.
+
+        HTTP 204 (no content) and 404 (already gone) are both treated
+        as success so that rollback is idempotent.
+        """
+        resp = self._request(
+            "DELETE", f"/api/now/table/{table_name}/{sys_id}"
+        )
+        if resp.status_code not in (200, 204, 404):
+            resp.raise_for_status()
+
     # ─────────────────────────────────────────────────────────────────
     # JSONv2 bulk operations (legacy but available on ALL instances)
     # ─────────────────────────────────────────────────────────────────

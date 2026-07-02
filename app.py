@@ -66,6 +66,8 @@ from migration.client import ServiceNowClient
 from migration.sf_client import SalesforceClient
 from migration.migrator import MigrationOrchestrator
 from migration.rate_tracker import RateTracker
+from migration.rollback_store import RollbackStore
+from migration.rollback_executor import RollbackExecutor
 
 # ── Bootstrap ────────────────────────────────────────────────────────
 logger = setup_logging()
@@ -90,10 +92,15 @@ _progress_q: queue.Queue = queue.Queue()
 _pause_event = threading.Event()
 _pause_event.set()
 
+# Rollback SSE queue and DB path
+_rollback_q: queue.Queue = queue.Queue()
+_rollback_result: dict = {}
+
 # Data file paths
 HISTORY_FILE      = Path(__file__).parent / "data" / "migration_history.json"
 CONNECTIONS_FILE  = Path(__file__).parent / "data" / "connections.json"
 CONFIGS_FILE      = Path(__file__).parent / "data" / "migration_configs.json"
+ROLLBACK_DB       = Path(__file__).parent / "data" / "rollback.db"
 
 
 def _load_history() -> list[dict]:
@@ -945,7 +952,20 @@ def api_check_external_id():
 @app.route("/history")
 def history():
     """Show migration history."""
-    return render_template("history.html", history=_load_history())
+    history_data = _load_history()
+    # Attach live rollback status to each entry that has a rollback job
+    rb_job_ids = [h.get("rollback_job_id") for h in history_data if h.get("rollback_job_id")]
+    if rb_job_ids:
+        try:
+            store = RollbackStore(ROLLBACK_DB)
+            for h in history_data:
+                jid = h.get("rollback_job_id")
+                if jid:
+                    job = store.get_job(jid)
+                    h["rollback_status"] = job["status"] if job else None
+        except Exception:
+            pass  # non-critical — just show button without status check
+    return render_template("history.html", history=history_data)
 
 
 @app.route("/history/<int:index>")
@@ -1393,6 +1413,26 @@ def _run_migration(ctx: dict):
                 }
             )
 
+        import uuid as _uuid
+        rollback_job_id = _uuid.uuid4().hex[:12]
+
+        rollback_store = RollbackStore(ROLLBACK_DB)
+        target_label = ctx.get("target_table", "")
+        source_label = ctx.get("source_table", "")
+        target_instance_label = (
+            ctx.get("target_instance")
+            or ctx.get("sf_target_username", "")
+        )
+        rollback_store.create_job(
+            job_id=rollback_job_id,
+            label=f"{source_label} → {target_label}",
+            migration_type=mt,
+            target_platform="sn" if target_is_sn else "sf",
+            target_table=target_label,
+            target_instance=target_instance_label,
+            created_at=datetime.now(timezone.utc).isoformat(),
+        )
+
         orchestrator = MigrationOrchestrator(
             source_client=src,
             target_client=tgt,
@@ -1408,6 +1448,8 @@ def _run_migration(ctx: dict):
             filter_conditions=ctx.get("filter_conditions"),
             pause_event=_pause_event,
             limit=ctx.get("limit"),
+            rollback_store=rollback_store,
+            rollback_job_id=rollback_job_id,
         )
 
         report = orchestrator.run()
@@ -1434,10 +1476,13 @@ def _run_migration(ctx: dict):
             "status": status,
             "fetch_mode": report.fetch_mode_used,
             "migration_type": mt,
+            "rollback_job_id": rollback_job_id,
         })
 
+        report_dict = report.to_dict()
+        report_dict["rollback_job_id"] = rollback_job_id
         _progress_q.put(
-            {"event": "complete", "data": report.to_dict()}
+            {"event": "complete", "data": report_dict}
         )
 
     except Exception as exc:
@@ -1466,6 +1511,165 @@ def _run_migration(ctx: dict):
                 "data": {"message": str(exc)},
             }
         )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Rollback API routes
+# ─────────────────────────────────────────────────────────────────────
+
+@app.route("/api/rollback/status/<job_id>")
+def api_rollback_status(job_id: str):
+    """Return rollback job metadata (status, counts, label)."""
+    store = RollbackStore(ROLLBACK_DB)
+    job = store.get_job(job_id)
+    if not job:
+        return jsonify({"error": "not_found"}), 404
+    return jsonify(job)
+
+
+@app.route("/api/rollback/execute/<job_id>", methods=["POST"])
+def api_rollback_execute(job_id: str):
+    """Start the rollback for *job_id* on a background thread."""
+    global _rollback_q, _rollback_result
+    _rollback_q = queue.Queue()
+    _rollback_result = {}
+
+    store = RollbackStore(ROLLBACK_DB)
+    job = store.get_job(job_id)
+    if not job:
+        return jsonify({"error": "not_found"}), 404
+    if job["status"] not in ("captured",):
+        return jsonify({"error": f"Cannot roll back — status is '{job['status']}'"}), 409
+
+    # Rebuild the target client from the session (still in memory during this request)
+    mt = job.get("migration_type", "sn_sn")
+    target_platform = job.get("target_platform", "sn")
+
+    def _build_target_client():
+        """Rebuild target client from session."""
+        if target_platform == "sf":
+            return SalesforceClient(
+                login_url=session.get("sf_target_login_url", "https://login.salesforce.com"),
+                username=session.get("sf_target_username", ""),
+                password=session.get("sf_target_password", ""),
+                security_token=session.get("sf_target_security_token", ""),
+                role="target",
+                tracker=RateTracker(),
+            )
+        else:
+            return ServiceNowClient(
+                instance=session.get("target_instance", ""),
+                username=session.get("target_username", ""),
+                password=session.get("target_password", ""),
+                role="target",
+                tracker=RateTracker(),
+            )
+
+    # Capture session data before leaving request context
+    rb_session = {
+        "sf_target_login_url": session.get("sf_target_login_url", "https://login.salesforce.com"),
+        "sf_target_username": session.get("sf_target_username", ""),
+        "sf_target_password": session.get("sf_target_password", ""),
+        "sf_target_security_token": session.get("sf_target_security_token", ""),
+        "target_instance": session.get("target_instance", ""),
+        "target_username": session.get("target_username", ""),
+        "target_password": session.get("target_password", ""),
+    }
+
+    def _run_rollback():
+        try:
+            if target_platform == "sf":
+                tgt_client = SalesforceClient(
+                    login_url=rb_session["sf_target_login_url"],
+                    username=rb_session["sf_target_username"],
+                    password=rb_session["sf_target_password"],
+                    security_token=rb_session["sf_target_security_token"],
+                    role="target",
+                    tracker=RateTracker(),
+                )
+            else:
+                tgt_client = ServiceNowClient(
+                    instance=rb_session["target_instance"],
+                    username=rb_session["target_username"],
+                    password=rb_session["target_password"],
+                    role="target",
+                    tracker=RateTracker(),
+                )
+
+            rb_store = RollbackStore(ROLLBACK_DB)
+
+            def _rb_progress(phase, processed, total, detail=""):
+                _rollback_q.put({
+                    "event": "progress",
+                    "data": {
+                        "phase": phase,
+                        "processed": processed,
+                        "total": total,
+                        "detail": detail,
+                    }
+                })
+
+            executor = RollbackExecutor(
+                store=rb_store,
+                target_client=tgt_client,
+                target_table=job["target_table"],
+                target_platform=target_platform,
+                progress_callback=_rb_progress,
+            )
+            result = executor.run(job_id)
+            _rollback_result.update({
+                "deleted": result.deleted,
+                "restored": result.restored,
+                "failed": result.failed,
+                "elapsed_seconds": result.elapsed_seconds,
+                "errors": result.errors[:10],  # cap for JSON size
+            })
+            _rollback_q.put({"event": "complete", "data": _rollback_result})
+        except Exception as exc:
+            logger.exception("Rollback failed: %s", exc)
+            _rollback_q.put({
+                "event": "error_msg",
+                "data": {"message": str(exc)},
+            })
+
+    threading.Thread(target=_run_rollback, daemon=True).start()
+    return jsonify({"status": "started", "job_id": job_id})
+
+
+@app.route("/api/rollback/stream/<job_id>")
+def api_rollback_stream(job_id: str):
+    """SSE stream for rollback progress."""
+    def generate() -> Generator[str, None, None]:
+        while True:
+            try:
+                msg = _rollback_q.get(timeout=30)
+            except queue.Empty:
+                yield "event: heartbeat\ndata: {}\n\n"
+                continue
+
+            event_type = msg.get("event", "progress")
+            data = json.dumps(msg.get("data", {}))
+            yield f"event: {event_type}\ndata: {data}\n\n"
+
+            if event_type in ("complete", "error_msg"):
+                break
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.route("/api/rollback/discard/<job_id>", methods=["POST"])
+def api_rollback_discard(job_id: str):
+    """Delete rollback data for *job_id* from the database."""
+    store = RollbackStore(ROLLBACK_DB)
+    job = store.get_job(job_id)
+    if not job:
+        return jsonify({"error": "not_found"}), 404
+    store.delete_job(job_id)
+    return jsonify({"status": "discarded"})
 
 
 # ─────────────────────────────────────────────────────────────────────

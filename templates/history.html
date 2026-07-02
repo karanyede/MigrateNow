@@ -1,210 +1,785 @@
-{% extends "base.html" %}
-{% set current_step = 0 %}
-
-{% block title %}Migration History{% endblock %}
-{% block page_title %}History{% endblock %}
-{% block breadcrumb %}<span>Migration History</span>{% endblock %}
-
-{% block header_actions %}
+{% extends "base.html" %} {% set current_step = 0 %} {% block title %}Migration
+History{% endblock %} {% block page_title %}History{% endblock %} {% block
+breadcrumb %}<span>Migration History</span>{% endblock %} {% block
+header_actions %}
 <a href="{{ url_for('connect_page') }}" class="btn btn-primary btn-sm">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-    </svg>
-    New Migration
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    style="width: 13px; height: 13px"
+  >
+    <path
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      d="M12 4.5v15m7.5-7.5h-15"
+    />
+  </svg>
+  New Migration
 </a>
 {% if history %}
-<form method="POST" action="{{ url_for('api_clear_history') }}" style="margin:0;"
-    onsubmit="return confirm('Clear all migration history? This cannot be undone.');">
-    <button type="submit" class="btn btn-danger btn-sm">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="width:13px;height:13px;">
-            <path stroke-linecap="round" stroke-linejoin="round"
-                d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-        </svg>
-        Clear All
-    </button>
+<form
+  method="POST"
+  action="{{ url_for('api_clear_history') }}"
+  style="margin: 0"
+  onsubmit="
+    return confirm('Clear all migration history? This cannot be undone.');
+  "
+>
+  <button type="submit" class="btn btn-danger btn-sm">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.75"
+      style="width: 13px; height: 13px"
+    >
+      <path
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0"
+      />
+    </svg>
+    Clear All
+  </button>
 </form>
-{% endif %}
-{% endblock %}
-
-{% block content %}
-
-{# ── Compute summary stats ─────────────────────────────── #}
-{% set total = history | length %}
-{% set success_n = namespace(val=0) %}
-{% set partial_n = namespace(val=0) %}
-{% set failed_n = namespace(val=0) %}
-{% set records_n = namespace(val=0) %}
-{% for h in history %}
-{% if h.status == 'success' %}{% set success_n.val = success_n.val + 1 %}{% endif %}
-{% if h.status == 'partial' %}{% set partial_n.val = partial_n.val + 1 %}{% endif %}
-{% if h.status == 'failed' %}{% set failed_n.val = failed_n.val + 1 %}{% endif %}
-{% set records_n.val = records_n.val + (h.inserts | default(0)) + (h.updates | default(0)) %}
-{% endfor %}
-
-{% if history %}
-
-<!-- ── Summary Strip ─────────────────────────────────────── -->
-<div style="display:grid; grid-template-columns:repeat(4,1fr); gap:0.75rem; margin-bottom:1.25rem;">
-    <div class="stat-summary-card" style="padding:1rem 1.25rem;">
-        <div class="stat-summary-card__label">Total Runs</div>
-        <div class="stat-summary-card__value" data-count="{{ total }}">{{ total }}</div>
-    </div>
-    <div class="stat-summary-card stat-summary-card--amber" style="padding:1rem 1.25rem;">
-        <div class="stat-summary-card__label">Records Moved</div>
-        <div class="stat-summary-card__value" data-count="{{ records_n.val }}">{{ records_n.val | int }}</div>
-    </div>
-    <div class="stat-summary-card stat-summary-card--success" style="padding:1rem 1.25rem;">
-        <div class="stat-summary-card__label">Successful</div>
-        <div class="stat-summary-card__value stat-summary-card__value--success" data-count="{{ success_n.val }}">{{ success_n.val }}</div>
-    </div>
-    <div class="stat-summary-card" style="padding:1rem 1.25rem;">
-        <div class="stat-summary-card__label">Failed</div>
-        <div class="stat-summary-card__value" data-count="{{ failed_n.val }}"
-            style="color:var(--rose);-webkit-text-fill-color:var(--rose);background:none;">{{ failed_n.val }}</div>
-    </div>
-</div>
+{% endif %} {% endblock %} {% block content %} {# ── Compute summary stats
+─────────────────────────────── #} {% set total = history | length %} {% set
+success_n = namespace(val=0) %} {% set partial_n = namespace(val=0) %} {% set
+failed_n = namespace(val=0) %} {% set records_n = namespace(val=0) %} {% for h
+in history %} {% if h.status == 'success' %}{% set success_n.val = success_n.val
++ 1 %}{% endif %} {% if h.status == 'partial' %}{% set partial_n.val =
+partial_n.val + 1 %}{% endif %} {% if h.status == 'failed' %}{% set failed_n.val
+= failed_n.val + 1 %}{% endif %} {% set records_n.val = records_n.val +
+(h.inserts | default(0)) + (h.updates | default(0)) %} {% endfor %} {% if
+history %}
 
 <!-- ── Filter Tabs ───────────────────────────────────────── -->
-<div class="history-filter-tabs" id="historyFilterTabs" style="margin:2.5rem 0;">
-    <button class="history-filter-tab active" data-filter="all">
-        All
-        <span style="margin-left:0.3rem;opacity:0.7;font-size:0.65rem;">{{ total }}</span>
-    </button>
-    <button class="history-filter-tab" data-filter="success">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-            style="width:11px;height:11px;display:inline;vertical-align:middle;margin-right:0.2rem;">
-            <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-        </svg>
-        Success
-        <span style="margin-left:0.3rem;opacity:0.7;font-size:0.65rem;">{{ success_n.val }}</span>
-    </button>
-    {% if partial_n.val > 0 %}
-    <button class="history-filter-tab" data-filter="partial">
-        ⚠ Partial
-        <span style="margin-left:0.3rem;opacity:0.7;font-size:0.65rem;">{{ partial_n.val }}</span>
-    </button>
-    {% endif %}
-    {% if failed_n.val > 0 %}
-    <button class="history-filter-tab" data-filter="failed">
-        ✗ Failed
-        <span style="margin-left:0.3rem;opacity:0.7;font-size:0.65rem;">{{ failed_n.val }}</span>
-    </button>
-    {% endif %}
+<div
+  class="history-filter-tabs"
+  id="historyFilterTabs"
+  style="margin: 2.5rem 0"
+>
+  <button class="history-filter-tab active" data-filter="all">
+    All
+    <span style="margin-left: 0.3rem; opacity: 0.7; font-size: 0.65rem"
+      >{{ total }}</span
+    >
+  </button>
+  <button class="history-filter-tab" data-filter="success">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.5"
+      style="
+        width: 11px;
+        height: 11px;
+        display: inline;
+        vertical-align: middle;
+        margin-right: 0.2rem;
+      "
+    >
+      <path
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        d="m4.5 12.75 6 6 9-13.5"
+      />
+    </svg>
+    Success
+    <span style="margin-left: 0.3rem; opacity: 0.7; font-size: 0.65rem"
+      >{{ success_n.val }}</span
+    >
+  </button>
+  {% if partial_n.val > 0 %}
+  <button class="history-filter-tab" data-filter="partial">
+    ⚠ Partial
+    <span style="margin-left: 0.3rem; opacity: 0.7; font-size: 0.65rem"
+      >{{ partial_n.val }}</span
+    >
+  </button>
+  {% endif %} {% if failed_n.val > 0 %}
+  <button class="history-filter-tab" data-filter="failed">
+    ✗ Failed
+    <span style="margin-left: 0.3rem; opacity: 0.7; font-size: 0.65rem"
+      >{{ failed_n.val }}</span
+    >
+  </button>
+  {% endif %}
 </div>
 
 <!-- ── History Table (5 key columns, clickable rows) ──── -->
-<div class="card" style="padding:0; overflow:hidden;">
-    <table class="history-table" id="historyTable" style="width:100%;">
-        <thead>
-            <tr>
-                <th style="padding:0.85rem 1.25rem;">Date</th>
-                <th>Type</th>
-                <th>Source → Target</th>
-                <th class="num-cell" style="padding-right:1.25rem;">Records</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for h in history %}
-            {% set mt_val = h.get('migration_type', 'sn_sn') if h.get('migration_type') else 'sn_sn' %}
-            {% set rec_count = (h.inserts | default(0)) + (h.updates | default(0)) %}
-            <tr class="history-row-clickable" data-status="{{ h.status }}"
-                data-href="{{ url_for('history_detail', index=loop.index0) }}"
-                title="Click to view full migration details">
-                <td
-                    style="padding:0.85rem 1.25rem; white-space:nowrap; font-family:'JetBrains Mono',monospace; font-size:0.78rem; color:var(--text-muted);">
-                    {{ h.timestamp[:10] }}
-                    <span style="display:block;font-size:0.68rem;opacity:0.6;">{{ h.timestamp[11:19] }}</span>
-                </td>
-                <td>
-                    <span class="type-badge type-badge--{{ mt_val }}">
-                        {{ mt_val.replace('_', ' → ').upper() }}
-                    </span>
-                </td>
-                <td>
-                    {% set src_inst = (h.source_instance or
-                    '').replace('.service-now.com','').replace('.salesforce.com','') %}
-                    {% set tgt_inst = (h.target_instance or
-                    '').replace('.service-now.com','').replace('.salesforce.com','') %}
-                    <span class="instance-name" title="{{ src_inst }}">{{ src_inst[:8] ~ '...' ~ src_inst[-8:] if
-                        src_inst|length > 18 else src_inst }}</span>
-                    <span style="color:var(--text-muted);margin:0 0.25rem;">→</span>
-                    <span class="instance-name" title="{{ tgt_inst }}">{{ tgt_inst[:8] ~ '...' ~ tgt_inst[-8:] if
-                        tgt_inst|length > 18 else tgt_inst }}</span>
-                    <span style="display:block;font-size:0.7rem;color:var(--text-muted);margin-top:0.1rem;">
-                        {{ h.source_table }}
-                        <span style="margin:0 0.2rem;">→</span>
-                        {{ h.target_table }}
-                    </span>
-                </td>
-                <td class="num-cell"
-                    style="font-family:'JetBrains Mono',monospace;font-size:0.85rem;color:var(--emerald);padding-right:1.25rem;">
-                    {{ rec_count }}
-                </td>
-                <td style="padding-right:1rem;">
-                    <span class="status-badge status-badge--{{ h.status }}">
-                        {% if h.status == 'success' %}✓ Success
-                        {% elif h.status == 'partial' %}⚠ Partial
-                        {% else %}✗ Failed{% endif %}
-                    </span>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+<div class="card" style="padding: 0; overflow: hidden">
+  <table class="history-table" id="historyTable" style="width: 100%">
+    <thead>
+      <tr>
+        <th style="padding: 0.85rem 1.25rem">Date</th>
+        <th>Type</th>
+        <th>Source → Target</th>
+        <th class="num-cell" style="padding-right: 1.25rem">Records</th>
+        <th>Status</th>
+        <th style="padding-right: 1.25rem">Rollback</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for h in history %} {% set mt_val = h.get('migration_type', 'sn_sn') if
+      h.get('migration_type') else 'sn_sn' %} {% set rec_count = (h.inserts |
+      default(0)) + (h.updates | default(0)) %}
+      <tr
+        class="history-row-clickable"
+        data-status="{{ h.status }}"
+        data-href="{{ url_for('history_detail', index=loop.index0) }}"
+        title="Click to view full migration details"
+      >
+        <td
+          style="
+            padding: 0.85rem 1.25rem;
+            white-space: nowrap;
+            font-family: &quot;JetBrains Mono&quot;, monospace;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+          "
+        >
+          {{ h.timestamp[:10] }}
+          <span style="display: block; font-size: 0.68rem; opacity: 0.6"
+            >{{ h.timestamp[11:19] }}</span
+          >
+        </td>
+        <td>
+          <span class="type-badge type-badge--{{ mt_val }}">
+            {{ mt_val.replace('_', ' → ').upper() }}
+          </span>
+        </td>
+        <td>
+          {% set src_inst = (h.source_instance or
+          '').replace('.service-now.com','').replace('.salesforce.com','') %} {%
+          set tgt_inst = (h.target_instance or
+          '').replace('.service-now.com','').replace('.salesforce.com','') %}
+          <span class="instance-name" title="{{ src_inst }}"
+            >{{ src_inst[:8] ~ '...' ~ src_inst[-8:] if src_inst|length > 18
+            else src_inst }}</span
+          >
+          <span style="color: var(--text-muted); margin: 0 0.25rem">→</span>
+          <span class="instance-name" title="{{ tgt_inst }}"
+            >{{ tgt_inst[:8] ~ '...' ~ tgt_inst[-8:] if tgt_inst|length > 18
+            else tgt_inst }}</span
+          >
+          <span
+            style="
+              display: block;
+              font-size: 0.7rem;
+              color: var(--text-muted);
+              margin-top: 0.1rem;
+            "
+          >
+            {{ h.source_table }}
+            <span style="margin: 0 0.2rem">→</span>
+            {{ h.target_table }}
+          </span>
+        </td>
+        <td
+          class="num-cell"
+          style="
+            font-family: &quot;JetBrains Mono&quot;, monospace;
+            font-size: 0.85rem;
+            color: var(--emerald);
+            padding-right: 1.25rem;
+          "
+        >
+          {{ rec_count }}
+        </td>
+        <td style="padding-right: 1rem">
+          <span class="status-badge status-badge--{{ h.status }}">
+            {% if h.status == 'success' %}✓ Success {% elif h.status ==
+            'partial' %}⚠ Partial {% else %}✗ Failed{% endif %}
+          </span>
+        </td>
+        <td
+          style="padding: 0.5rem 1rem 0.5rem 0"
+          onclick="event.stopPropagation()"
+        >
+          {% if h.rollback_job_id %} {% if h.rollback_status == 'rolled_back' %}
+          <span
+            style="
+              font-size: 0.7rem;
+              padding: 0.25rem 0.6rem;
+              border: 1px solid rgba(16, 185, 129, 0.3);
+              border-radius: 6px;
+              background: rgba(16, 185, 129, 0.07);
+              color: var(--emerald);
+              white-space: nowrap;
+            "
+            >✓ Rolled Back</span
+          >
+          {% elif h.rollback_status == 'rolling_back' %}
+          <span
+            style="
+              font-size: 0.7rem;
+              padding: 0.25rem 0.6rem;
+              border: 1px solid rgba(217, 119, 6, 0.3);
+              border-radius: 6px;
+              background: rgba(217, 119, 6, 0.07);
+              color: var(--amber);
+              white-space: nowrap;
+            "
+            >⏳ In Progress</span
+          >
+          {% elif h.rollback_status == 'failed' %}
+          <span
+            style="
+              font-size: 0.7rem;
+              padding: 0.25rem 0.6rem;
+              border: 1px solid rgba(239, 68, 68, 0.3);
+              border-radius: 6px;
+              background: rgba(239, 68, 68, 0.07);
+              color: var(--danger, #ef4444);
+              white-space: nowrap;
+            "
+            >✗ Failed</span
+          >
+          {% else %}
+          <button
+            class="btn-rollback-history"
+            data-job-id="{{ h.rollback_job_id }}"
+            data-label="{{ h.source_table }} → {{ h.target_table }}"
+            onclick="event.stopPropagation(); openHistoryRollback('{{ h.rollback_job_id }}', '{{ h.source_table }} → {{ h.target_table }}', this)"
+            style="
+              font-size: 0.7rem;
+              padding: 0.25rem 0.6rem;
+              border: 1px solid rgba(217, 119, 6, 0.5);
+              border-radius: 6px;
+              cursor: pointer;
+              background: rgba(217, 119, 6, 0.1);
+              color: var(--amber);
+              white-space: nowrap;
+              transition: all 0.2s;
+            "
+            title="Roll back this migration"
+          >
+            ↩ Rollback
+          </button>
+          {% endif %} {% else %}
+          <span style="font-size: 0.7rem; color: var(--text-muted)">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
 
 {% else %}
 
 <!-- ── Empty State ───────────────────────────────────────── -->
 <div class="card">
-    <div class="empty-state">
-        <div class="empty-state__icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round"
-                    d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-            </svg>
-        </div>
-        <div class="empty-state__title">No migration history</div>
-        <div class="empty-state__sub">Run your first migration to see results here. History is automatically saved.
-        </div>
-        <a href="{{ url_for('connect_page') }}" class="btn btn-primary">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-            Start a Migration
-        </a>
+  <div class="empty-state">
+    <div class="empty-state__icon">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+        />
+      </svg>
     </div>
+    <div class="empty-state__title">No migration history</div>
+    <div class="empty-state__sub">
+      Run your first migration to see results here. History is automatically
+      saved.
+    </div>
+    <a href="{{ url_for('connect_page') }}" class="btn btn-primary">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        style="width: 14px; height: 14px"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M12 4.5v15m7.5-7.5h-15"
+        />
+      </svg>
+      Start a Migration
+    </a>
+  </div>
 </div>
 
-{% endif %}
+{% endif %} {% endblock %} {% block scripts %}
+<!-- Rollback overlay panel -->
+<div
+  id="historyRollbackOverlay"
+  style="
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(5px);
+    align-items: center;
+    justify-content: center;
+  "
+>
+  <div
+    style="
+      background: var(--surface-1, #1a1a2e);
+      border: 1px solid rgba(217, 119, 6, 0.4);
+      border-radius: 18px;
+      padding: 2rem 2rem 1.5rem;
+      max-width: 480px;
+      width: 93%;
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+      animation: rbSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+    "
+  >
+    <!-- Header -->
+    <div
+      style="
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 1.25rem;
+      "
+    >
+      <div
+        id="hrm-icon"
+        style="
+          width: 40px;
+          height: 40px;
+          border-radius: 10px;
+          flex-shrink: 0;
+          background: rgba(217, 119, 6, 0.12);
+          border: 1px solid rgba(217, 119, 6, 0.3);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--amber);
+        "
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          style="width: 20px; height: 20px"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3"
+          />
+        </svg>
+      </div>
+      <div>
+        <div id="hrm-title" style="font-weight: 700; font-size: 1rem">
+          Rollback Migration
+        </div>
+        <div
+          id="hrm-label"
+          style="font-size: 0.78rem; color: var(--text-muted)"
+        ></div>
+      </div>
+      <button
+        onclick="closeHrmOverlay()"
+        style="
+          margin-left: auto;
+          background: none;
+          border: none;
+          color: var(--text-muted);
+          cursor: pointer;
+          font-size: 1.2rem;
+          line-height: 1;
+          padding: 4px;
+        "
+      >
+        &times;
+      </button>
+    </div>
 
-{% endblock %}
+    <!-- Confirm state -->
+    <div id="hrm-confirm-state">
+      <div
+        id="hrm-info"
+        style="
+          font-size: 0.84rem;
+          color: var(--text-secondary);
+          background: rgba(217, 119, 6, 0.05);
+          border: 1px solid rgba(217, 119, 6, 0.15);
+          border-radius: 8px;
+          padding: 0.9rem 1rem;
+          margin-bottom: 0.9rem;
+          line-height: 1.8;
+        "
+      >
+        Loading…
+      </div>
+      <div
+        style="
+          font-size: 0.72rem;
+          color: var(--text-muted);
+          margin-bottom: 1.1rem;
+        "
+      >
+        ⚠ Records changed on the target <em>after</em> this migration may be
+        overwritten.
+      </div>
+      <div style="display: flex; gap: 0.75rem; justify-content: flex-end">
+        <button class="btn btn-secondary btn-sm" onclick="closeHrmOverlay()">
+          Cancel
+        </button>
+        <button
+          id="hrm-confirm-btn"
+          style="
+            background: linear-gradient(135deg, #d97706, #b45309);
+            color: #fff;
+            border: none;
+            padding: 0.5rem 1.25rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+          "
+          onclick="doHistoryRollback()"
+        >
+          Yes, Rollback
+        </button>
+      </div>
+    </div>
 
-{% block scripts %}
+    <!-- Running state -->
+    <div id="hrm-running-state" style="display: none">
+      <div
+        style="
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 0.5rem;
+        "
+      >
+        <div
+          style="
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--amber);
+            animation: pulseDot 1.3s ease-in-out infinite;
+          "
+        ></div>
+        <span style="font-size: 0.9rem; font-weight: 600">Rolling back…</span>
+      </div>
+      <div
+        id="hrm-progress-detail"
+        style="
+          font-size: 0.8rem;
+          color: var(--text-muted);
+          margin-bottom: 0.75rem;
+        "
+      >
+        Starting…
+      </div>
+      <div
+        style="
+          height: 5px;
+          background: rgba(255, 255, 255, 0.07);
+          border-radius: 100px;
+          overflow: hidden;
+          margin-bottom: 1rem;
+        "
+      >
+        <div
+          id="hrm-progress-bar"
+          style="
+            height: 100%;
+            background: linear-gradient(90deg, #d97706, #f59e0b);
+            width: 10%;
+            transition: width 0.5s ease;
+          "
+        ></div>
+      </div>
+    </div>
+
+    <!-- Done state -->
+    <div id="hrm-done-state" style="display: none">
+      <div
+        style="
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 0.5rem;
+        "
+      >
+        <div
+          style="
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: rgba(16, 185, 129, 0.12);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--emerald);
+          "
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.5"
+            style="width: 16px; height: 16px"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="m4.5 12.75 6 6 9-13.5"
+            />
+          </svg>
+        </div>
+        <span
+          style="font-size: 0.95rem; font-weight: 700; color: var(--emerald)"
+          >Rollback Complete</span
+        >
+      </div>
+      <div
+        id="hrm-done-detail"
+        style="
+          font-size: 0.82rem;
+          color: var(--text-muted);
+          margin-bottom: 1rem;
+        "
+      ></div>
+      <div style="display: flex; justify-content: flex-end">
+        <button class="btn btn-primary btn-sm" onclick="location.reload()">
+          Refresh Page
+        </button>
+      </div>
+    </div>
+
+    <!-- Error state -->
+    <div id="hrm-error-state" style="display: none">
+      <div
+        style="
+          color: var(--danger, #ef4444);
+          font-size: 0.85rem;
+          margin-bottom: 1rem;
+        "
+        id="hrm-error-msg"
+      ></div>
+      <div style="display: flex; justify-content: flex-end">
+        <button class="btn btn-secondary btn-sm" onclick="closeHrmOverlay()">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  @keyframes rbSlideIn {
+    from {
+      opacity: 0;
+      transform: translateY(16px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+</style>
+
 <script>
-    (function () {
-        // ── Clickable history rows ────────────────────────────────
-        document.querySelectorAll('.history-row-clickable').forEach(function (row) {
-            row.addEventListener('click', function () {
-                window.location.href = row.dataset.href;
-            });
-        });
+  (function () {
+    // ── Clickable history rows ────────────────────────────────
+    document.querySelectorAll(".history-row-clickable").forEach(function (row) {
+      row.addEventListener("click", function () {
+        window.location.href = row.dataset.href;
+      });
+    });
 
-        // ── Filter tabs ───────────────────────────────────────────
-        const tabs = document.querySelectorAll('.history-filter-tab');
-        const rows = document.querySelectorAll('#historyTable tbody tr');
+    // ── Filter tabs ───────────────────────────────────────────
+    const tabs = document.querySelectorAll(".history-filter-tab");
+    const rows = document.querySelectorAll("#historyTable tbody tr");
 
-        tabs.forEach(function (tab) {
-            tab.addEventListener('click', function () {
-                tabs.forEach(function (t) { t.classList.remove('active'); });
-                tab.classList.add('active');
-                const filter = tab.dataset.filter;
-                rows.forEach(function (row) {
-                    row.style.display = (filter === 'all' || row.dataset.status === filter) ? '' : 'none';
-                });
-            });
+    tabs.forEach(function (tab) {
+      tab.addEventListener("click", function () {
+        tabs.forEach(function (t) {
+          t.classList.remove("active");
         });
-    })();
+        tab.classList.add("active");
+        const filter = tab.dataset.filter;
+        rows.forEach(function (row) {
+          row.style.display =
+            filter === "all" || row.dataset.status === filter ? "" : "none";
+        });
+      });
+    });
+
+    // ── Rollback overlay logic ─────────────────────────────────
+    let _hrmJobId = null;
+    let _hrmPollTimer = null;
+    let _hrmTriggerBtn = null;
+
+    function showHrmState(state) {
+      ["confirm", "running", "done", "error"].forEach(function (s) {
+        document.getElementById("hrm-" + s + "-state").style.display =
+          s === state ? "" : "none";
+      });
+    }
+
+    function closeHrmOverlay() {
+      document.getElementById("historyRollbackOverlay").style.display = "none";
+      if (_hrmPollTimer) {
+        clearInterval(_hrmPollTimer);
+        _hrmPollTimer = null;
+      }
+    }
+    window.closeHrmOverlay = closeHrmOverlay;
+
+    window.openHistoryRollback = function (jobId, label, triggerBtn) {
+      _hrmJobId = jobId;
+      _hrmTriggerBtn = triggerBtn || null;
+      document.getElementById("hrm-label").textContent = label;
+      document.getElementById("hrm-title").textContent = "Rollback Migration";
+      showHrmState("confirm");
+
+      const info = document.getElementById("hrm-info");
+      info.textContent = "Loading rollback details…";
+      document.getElementById("hrm-confirm-btn").disabled = true;
+
+      const overlay = document.getElementById("historyRollbackOverlay");
+      overlay.style.display = "flex";
+
+      fetch("/api/rollback/status/" + jobId)
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (job) {
+          if (!job || job.error) {
+            info.innerHTML =
+              '<span style="color:var(--danger,#ef4444);">Rollback data not found.</span>';
+            return;
+          }
+          if (job.status !== "captured") {
+            info.innerHTML =
+              "This migration has already been rolled back or cannot be undone.";
+            document.getElementById("hrm-confirm-btn").style.display = "none";
+            return;
+          }
+          const ins = (job.captured_inserts || 0).toLocaleString();
+          const upd = (job.captured_updates || 0).toLocaleString();
+          info.innerHTML =
+            (job.captured_inserts > 0
+              ? "<div>🗑 <strong>" +
+                ins +
+                "</strong> inserted record" +
+                (job.captured_inserts !== 1 ? "s" : "") +
+                " will be <strong>deleted</strong> from target</div>"
+              : "") +
+            (job.captured_updates > 0
+              ? "<div>↩ <strong>" +
+                upd +
+                "</strong> updated record" +
+                (job.captured_updates !== 1 ? "s" : "") +
+                " will be <strong>restored</strong> to pre-migration values</div>"
+              : "") +
+            (!job.captured_inserts && !job.captured_updates
+              ? "<div>No changes were captured to roll back.</div>"
+              : "");
+          document.getElementById("hrm-confirm-btn").disabled = false;
+        })
+        .catch(function () {
+          info.textContent = "Could not load rollback details.";
+        });
+    };
+
+    window.doHistoryRollback = function () {
+      if (!_hrmJobId) return;
+      document.getElementById("hrm-confirm-btn").disabled = true;
+      showHrmState("running");
+      document.getElementById("hrm-progress-bar").style.width = "15%";
+
+      fetch("/api/rollback/execute/" + _hrmJobId, { method: "POST" })
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (d) {
+          if (d.error) {
+            document.getElementById("hrm-error-msg").textContent = d.error;
+            showHrmState("error");
+            return;
+          }
+          // Poll for completion instead of SSE (avoids race conditions)
+          let ticks = 0;
+          _hrmPollTimer = setInterval(function () {
+            ticks++;
+            // Animate bar while waiting
+            const bar = document.getElementById("hrm-progress-bar");
+            bar.style.width = Math.min(15 + ticks * 8, 85) + "%";
+
+            fetch("/api/rollback/status/" + _hrmJobId)
+              .then(function (r) {
+                return r.json();
+              })
+              .then(function (job) {
+                if (job.status === "rolled_back") {
+                  clearInterval(_hrmPollTimer);
+                  bar.style.width = "100%";
+                  setTimeout(function () {
+                    const del = (job.captured_inserts || 0).toLocaleString();
+                    const rst = (job.captured_updates || 0).toLocaleString();
+                    document.getElementById("hrm-done-detail").textContent =
+                      del + " records deleted, " + rst + " records restored.";
+                    showHrmState("done");
+                    // Replace the trigger button with a badge
+                    if (_hrmTriggerBtn) {
+                      _hrmTriggerBtn.outerHTML =
+                        '<span style="font-size:0.7rem;padding:0.25rem 0.6rem;border:1px solid rgba(16,185,129,0.3);border-radius:6px;background:rgba(16,185,129,0.07);color:var(--emerald);white-space:nowrap;">✓ Rolled Back</span>';
+                    }
+                  }, 300);
+                } else if (job.status === "failed") {
+                  clearInterval(_hrmPollTimer);
+                  document.getElementById("hrm-error-msg").textContent =
+                    "Rollback failed. Check server logs for details.";
+                  showHrmState("error");
+                } else {
+                  // still rolling_back — update detail text
+                  document.getElementById("hrm-progress-detail").textContent =
+                    "Rollback in progress…";
+                }
+              })
+              .catch(function () {
+                /* ignore transient network errors */
+              });
+
+            if (ticks > 60) {
+              // 60s timeout
+              clearInterval(_hrmPollTimer);
+              document.getElementById("hrm-error-msg").textContent =
+                "Timed out waiting for rollback. Refresh the page to check status.";
+              showHrmState("error");
+            }
+          }, 1000);
+        })
+        .catch(function (err) {
+          document.getElementById("hrm-error-msg").textContent =
+            "Failed to start rollback: " + err.message;
+          showHrmState("error");
+        });
+    };
+
+    // Close on backdrop click
+    document
+      .getElementById("historyRollbackOverlay")
+      .addEventListener("click", function (e) {
+        if (e.target === this) closeHrmOverlay();
+      });
+  })();
 </script>
 {% endblock %}

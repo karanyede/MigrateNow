@@ -637,6 +637,22 @@ breadcrumb %}
       </svg>
       View History
     </a>
+    <!-- Rollback button — shown when rollback data is available -->
+    <button
+      type="button"
+      id="btnRollback"
+      class="btn btn-secondary"
+      style="display: none; align-items: center; gap: 6px; cursor: pointer;
+             border-color: var(--amber); color: var(--amber);"
+      onclick="openRollbackModal()"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        style="width: 15px; height: 15px">
+        <path stroke-linecap="round" stroke-linejoin="round"
+          d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" />
+      </svg>
+      Rollback Migration
+    </button>
     <a
       href="{{ url_for('home') }}"
       class="btn btn-primary btn-lg"
@@ -657,6 +673,108 @@ breadcrumb %}
       </svg>
       New Migration
     </a>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     ROLLBACK CONFIRMATION MODAL
+══════════════════════════════════════════════════════ -->
+<div id="rollbackModal" style="
+  display: none;
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  align-items: center;
+  justify-content: center;
+">
+  <div style="
+    background: var(--surface-1, #1a1a2e);
+    border: 1px solid rgba(217,119,6,0.4);
+    border-radius: 16px;
+    padding: 2rem;
+    max-width: 480px;
+    width: 90%;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+    animation: fadeSlideIn 0.25s ease both;
+  ">
+    <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;">
+      <div style="
+        width:40px;height:40px;border-radius:10px;
+        background:rgba(217,119,6,0.15);
+        border:1px solid rgba(217,119,6,0.3);
+        display:flex;align-items:center;justify-content:center;
+        color:var(--amber);flex-shrink:0;
+      ">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+        </svg>
+      </div>
+      <div>
+        <div style="font-weight:700;font-size:1rem;">Confirm Rollback</div>
+        <div style="font-size:0.8rem;color:var(--text-muted);">This will undo all changes made by this migration</div>
+      </div>
+    </div>
+    <div id="rollbackModalBody" style="
+      font-size:0.85rem;color:var(--text-secondary);
+      background:rgba(217,119,6,0.05);
+      border:1px solid rgba(217,119,6,0.15);
+      border-radius:8px;padding:1rem;
+      margin-bottom:1.25rem;line-height:1.7;
+    "></div>
+    <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:1.25rem;">
+      ⚠ Records modified on the target <em>after</em> this migration will have those changes overwritten.
+    </div>
+    <div style="display:flex;gap:0.75rem;justify-content:flex-end;">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="closeRollbackModal()" id="btnRollbackCancel">Cancel</button>
+      <button type="button" id="btnRollbackConfirm"
+        style="background:linear-gradient(135deg,#d97706,#b45309);color:#fff;border:none;
+               padding:0.5rem 1.25rem;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;"
+        onclick="confirmRollback()">
+        Yes, Rollback
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     ROLLBACK PROGRESS SECTION
+══════════════════════════════════════════════════════ -->
+<div id="rollbackRunning" style="display:none">
+  <div class="card" style="border-color:rgba(217,119,6,0.3);background:rgba(217,119,6,0.04);margin-bottom:1.25rem;">
+    <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem;">
+      <div style="width:8px;height:8px;border-radius:50%;background:var(--amber);animation:pulseDot 1.5s ease-in-out infinite;"></div>
+      <div class="card__title" style="margin:0;font-size:1.1rem;">Rolling Back Migration…</div>
+    </div>
+    <div id="rollbackProgressDetail" class="card__subtitle" style="margin:0;font-size:0.82rem;">Preparing rollback…</div>
+    <div style="margin-top:0.75rem;height:6px;background:rgba(255,255,255,0.06);border-radius:100px;overflow:hidden;">
+      <div id="rollbackProgressBar" style="height:100%;background:linear-gradient(90deg,#d97706,#f59e0b);width:0%;transition:width 0.4s ease;"></div>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:0;">
+    <div class="card__title" style="margin-bottom:0.75rem;font-size:0.88rem;">Rollback Log</div>
+    <div id="rollbackConsole" style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;
+      background:rgba(0,0,0,0.2);border:1px solid var(--border-subtle);
+      padding:0.75rem;border-radius:var(--radius-sm);min-height:120px;overflow-y:auto;"></div>
+  </div>
+</div>
+
+<!-- Rollback Complete -->
+<div id="rollbackComplete" style="display:none">
+  <div class="card" style="border-color:rgba(217,119,6,0.25);background:rgba(217,119,6,0.04);">
+    <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem;">
+      <div style="width:36px;height:36px;border-radius:10px;background:rgba(217,119,6,0.15);
+        border:1px solid rgba(217,119,6,0.3);display:flex;align-items:center;justify-content:center;color:var(--amber);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px">
+          <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+        </svg>
+      </div>
+      <div class="card__title" style="margin:0;font-size:1.1rem;">Rollback Complete</div>
+    </div>
+    <div id="rollbackCompleteDetail" class="card__subtitle" style="margin:0;"></div>
+  </div>
+  <div class="btn-row" style="margin-top:1rem;">
+    <a href="{{ url_for('history') }}" class="btn btn-secondary">View History</a>
+    <a href="{{ url_for('home') }}" class="btn btn-primary">New Migration</a>
   </div>
 </div>
 
@@ -933,6 +1051,17 @@ breadcrumb %}
                 </div>`;
       }
 
+      // Rollback button visibility
+      if (r.rollback_job_id) {
+        const rbBtn = document.getElementById("btnRollback");
+        if (rbBtn) {
+          rbBtn.dataset.jobId = r.rollback_job_id;
+          rbBtn.dataset.inserts = r.inserts || 0;
+          rbBtn.dataset.updates = r.updates || 0;
+          rbBtn.style.display = "inline-flex";
+        }
+      }
+
       // Bind export events
       const btnHtml = document.getElementById("btnExportHtml");
       const btnCsv = document.getElementById("btnExportCsv");
@@ -1140,6 +1269,104 @@ breadcrumb %}
         "text/csv",
       );
     }
+
+    // ── Rollback UI logic ─────────────────────────────────────────
+    let _rbJobId = null;
+
+    function openRollbackModal() {
+      const btn = document.getElementById("btnRollback");
+      _rbJobId = btn ? btn.dataset.jobId : null;
+      if (!_rbJobId) return;
+
+      const inserts = parseInt(btn.dataset.inserts || "0");
+      const updates = parseInt(btn.dataset.updates || "0");
+
+      const body = document.getElementById("rollbackModalBody");
+      body.innerHTML = [
+        inserts > 0 ? `<div>🗑 <strong>${inserts.toLocaleString()}</strong> inserted record${inserts !== 1 ? 's' : ''} will be <strong>deleted</strong> from target</div>` : "",
+        updates > 0 ? `<div>↩ <strong>${updates.toLocaleString()}</strong> updated record${updates !== 1 ? 's' : ''} will be <strong>restored</strong> to their pre-migration values</div>` : "",
+        (!inserts && !updates) ? `<div>No changes recorded to roll back.</div>` : "",
+      ].join("");
+
+      const modal = document.getElementById("rollbackModal");
+      modal.style.display = "flex";
+    }
+
+    function closeRollbackModal() {
+      document.getElementById("rollbackModal").style.display = "none";
+    }
+
+    function confirmRollback() {
+      if (!_rbJobId) return;
+      closeRollbackModal();
+      document.getElementById("resultsSection").style.display = "none";
+      document.getElementById("rollbackRunning").style.display = "block";
+
+      // Kick off rollback
+      fetch("/api/rollback/execute/" + _rbJobId, { method: "POST" })
+        .then(res => res.json())
+        .then(() => {
+          // Open SSE stream
+          const rbSource = new EventSource("/api/rollback/stream/" + _rbJobId);
+          const detail = document.getElementById("rollbackProgressDetail");
+          const bar = document.getElementById("rollbackProgressBar");
+          const console_ = document.getElementById("rollbackConsole");
+
+          function rbLog(msg) {
+            const div = document.createElement("div");
+            div.style.cssText = "padding:2px 0;color:#d1d5db;";
+            div.textContent = "▸ " + msg;
+            console_.appendChild(div);
+            console_.scrollTop = console_.scrollHeight;
+          }
+
+          rbSource.addEventListener("progress", function(e) {
+            const d = JSON.parse(e.data);
+            const pct = d.total > 0 ? Math.round((d.processed / d.total) * 100) : 50;
+            bar.style.width = pct + "%";
+            if (d.detail) { detail.textContent = d.detail; rbLog(d.detail); }
+          });
+
+          rbSource.addEventListener("complete", function(e) {
+            rbSource.close();
+            bar.style.width = "100%";
+            const res = JSON.parse(e.data);
+            document.getElementById("rollbackRunning").style.display = "none";
+            const completeSection = document.getElementById("rollbackComplete");
+            completeSection.style.display = "block";
+            completeSection.style.animation = "fadeSlideIn 0.4s ease both";
+            document.getElementById("rollbackCompleteDetail").textContent =
+              `${(res.deleted||0).toLocaleString()} records deleted, ` +
+              `${(res.restored||0).toLocaleString()} records restored` +
+              (res.failed ? `, ${res.failed} failed` : "") + ".";
+          });
+
+          rbSource.addEventListener("error_msg", function(e) {
+            const d = JSON.parse(e.data);
+            rbLog("ERROR: " + d.message);
+            rbSource.close();
+          });
+
+          rbSource.onerror = function() {
+            rbLog("Stream connection lost.");
+            rbSource.close();
+          };
+        })
+        .catch(err => {
+          document.getElementById("rollbackRunning").style.display = "none";
+          document.getElementById("resultsSection").style.display = "block";
+          alert("Failed to start rollback: " + err.message);
+        });
+    }
+
+    // Close modal on backdrop click
+    document.getElementById("rollbackModal").addEventListener("click", function(e) {
+      if (e.target === this) closeRollbackModal();
+    });
+
+    window.openRollbackModal = openRollbackModal;
+    window.closeRollbackModal = closeRollbackModal;
+    window.confirmRollback = confirmRollback;
   })();
 </script>
 {% endblock %}

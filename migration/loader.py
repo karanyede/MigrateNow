@@ -42,6 +42,7 @@ class LoadResult:
     updated: int = 0
     failed: int = 0
     failed_records: list[dict] = field(default_factory=list)
+    inserted_ids: list[str] = field(default_factory=list)  # target-assigned sys_ids
     elapsed_seconds: float = 0.0
     batch_count: int = 0
 
@@ -111,10 +112,11 @@ class BulkLoader:
         # ── Phase 1: Inserts ─────────────────────────────────────────
         # Use parallel JSONv2 as primary strategy
         if inserts:
-            ok, fail, failed_recs = self._parallel_jsonv2_insert(inserts, progress_callback=report_progress)
+            ok, fail, failed_recs, ins_ids = self._parallel_jsonv2_insert(inserts, progress_callback=report_progress)
             result.inserted += ok
             result.failed += fail
             result.failed_records.extend(failed_recs)
+            result.inserted_ids.extend(ins_ids)
             jsonv2_chunk_size = self._jsonv2_chunk_size(len(inserts))
             result.batch_count += (len(inserts) + jsonv2_chunk_size - 1) // jsonv2_chunk_size
 
@@ -147,10 +149,10 @@ class BulkLoader:
 
     def _execute_insert_batch(
         self, records: list[dict]
-    ) -> tuple[int, int, list[dict]]:
+    ) -> tuple[int, int, list[dict], list[str]]:
         """Insert a batch using the best available strategy."""
         if not records:
-            return 0, 0, []
+            return 0, 0, [], []
 
         # Strategy 1: Parallel JSONv2 insertMultiple (fastest)
         if self._jsonv2_available is not False:
@@ -187,15 +189,17 @@ class BulkLoader:
         # Strategy 3: Parallel single-record Table API
         return self._parallel_single_insert(records)
 
+
     def _parallel_jsonv2_insert(
         self, records: List[dict], progress_callback: Callable[[int, str], None] | None = None
-    ) -> Tuple[int, int, List[dict]]:
+    ) -> Tuple[int, int, List[dict], List[str]]:
         """
         Split records into chunks and run JSONv2 insertMultiple concurrently.
         Uses `MAX_WORKERS_LOAD` from config (default 5).
+        Returns (ok, fail, failed_records, inserted_ids).
         """
         if not records:
-            return 0, 0, []
+            return 0, 0, [], []
 
         chunk_size = self._jsonv2_chunk_size(len(records))
         chunks = [records[i:i+chunk_size] for i in range(0, len(records), chunk_size)]
@@ -214,29 +218,31 @@ class BulkLoader:
             for future in concurrent.futures.as_completed(futures):
                 idx = futures[future]
                 try:
-                    ok, fail, failed_recs = future.result()
-                    results.append((ok, fail, failed_recs))
+                    ok, fail, failed_recs, ins_ids = future.result()
+                    results.append((ok, fail, failed_recs, ins_ids))
                     logger.info("Chunk %d/%d complete: %d OK, %d failed.", idx + 1, len(chunks), ok, fail)
                     if progress_callback:
                         progress_callback(len(chunks[idx]), "insert")
                 except Exception as exc:
                     logger.error("Chunk %d/%d failed with exception: %s", idx + 1, len(chunks), exc)
                     # Treat entire chunk as failed
-                    results.append((0, len(chunks[idx]), chunks[idx]))
+                    results.append((0, len(chunks[idx]), chunks[idx], []))
                     if progress_callback:
                         progress_callback(len(chunks[idx]), "insert")
 
         total_ok = sum(r[0] for r in results)
         total_fail = sum(r[1] for r in results)
         failed_records = []
-        for _, _, fail_list in results:
+        inserted_ids: List[str] = []
+        for _, _, fail_list, ids in results:
             failed_records.extend(fail_list)
+            inserted_ids.extend(ids)
 
         logger.info(
             "Parallel JSONv2 insert: %d OK, %d failed across %d chunks.",
             total_ok, total_fail, len(chunks),
         )
-        return total_ok, total_fail, failed_records
+        return total_ok, total_fail, failed_records, inserted_ids
 
     # ─────────────────────────────────────────────────────────────────
     # UPDATE strategies
@@ -288,12 +294,13 @@ class BulkLoader:
 
     def _jsonv2_insert_multiple(
         self, records: list[dict]
-    ) -> tuple[int, int, list[dict]]:
+    ) -> tuple[int, int, list[dict], list[str]]:
         """
         Insert records via ``/{table}.do?JSONv2&sysparm_action=insertMultiple``.
 
         Sends ALL records in the batch in a single HTTP call.
-        Returns ``(ok, fail, failed_records)``.
+        Returns ``(ok, fail, failed_records, inserted_ids)``.
+        ``inserted_ids`` contains the target-assigned sys_ids for rollback.
         """
         mapped_records = []
         for rec in records:
@@ -308,11 +315,16 @@ class BulkLoader:
 
         results = resp.get("records", [])
         ok, fail, failed = 0, 0, []
+        inserted_ids: list[str] = []
 
         for i, r in enumerate(results):
             status = r.get("__status", "")
             if status == "success":
                 ok += 1
+                # Capture the target-assigned sys_id for rollback
+                sid = r.get("sys_id", "")
+                if sid:
+                    inserted_ids.append(sid)
             else:
                 fail += 1
                 error_msg = r.get("__error", r.get("error_message", "unknown error"))
@@ -342,13 +354,13 @@ class BulkLoader:
             "Inserted %d records (%d failed) via JSONv2 — 1 API call.",
             ok, fail,
         )
-        return ok, fail, failed
+        return ok, fail, failed, inserted_ids
 
     # ── Batch API (if available) ─────────────────────────────────────
 
     def _batch_api_insert(
         self, records: list[dict]
-    ) -> tuple[int, int, list[dict]]:
+    ) -> tuple[int, int, list[dict], list[str]]:
         """Insert via /api/now/batch."""
         ops = []
         for rec in records:
@@ -394,16 +406,34 @@ class BulkLoader:
             )
         responses = self.client.batch_request(ops)
         self._batch_api_available = True
-        return self._parse_batch_responses(responses, records)
+        ok, fail, failed, _ = self._parse_batch_responses(responses, records)
+        return ok, fail, failed
 
     def _parse_batch_responses(
         self, responses: list[dict], records: list[dict]
-    ) -> tuple[int, int, list[dict]]:
+    ) -> tuple[int, int, list[dict], list[str]]:
+        """Parse batch API responses; return (ok, fail, failed_records, inserted_ids)."""
         ok, fail, failed = 0, 0, []
+        inserted_ids: list[str] = []
         for i, resp in enumerate(responses):
             status = resp.get("status_code", 0)
             if 200 <= status < 300:
                 ok += 1
+                # Extract the sys_id from the response body for rollback tracking
+                body_str = resp.get("body", "")
+                if resp.get("body_encoding") == "base64" and body_str:
+                    import base64
+                    try:
+                        body_str = base64.b64decode(body_str).decode("utf-8")
+                    except Exception:
+                        pass
+                try:
+                    body_data = json.loads(body_str) if body_str else {}
+                    sid = body_data.get("result", {}).get("sys_id", "")
+                    if sid:
+                        inserted_ids.append(sid)
+                except Exception:
+                    pass
             else:
                 fail += 1
                 rec = records[i] if i < len(records) else {}
@@ -421,13 +451,13 @@ class BulkLoader:
                     i, status, str(body_str)[:500],
                 )
                 failed.append(rec)
-        return ok, fail, failed
+        return ok, fail, failed, inserted_ids
 
     # ── Parallel single-record Table API ─────────────────────────────
 
     def _parallel_single_insert(
         self, records: list[dict]
-    ) -> tuple[int, int, list[dict]]:
+    ) -> tuple[int, int, list[dict], list[str]]:
         """Insert one-by-one using a thread pool."""
         return self._parallel_table_api(records, mode="insert")
 
@@ -435,41 +465,48 @@ class BulkLoader:
         self, records: list[dict]
     ) -> tuple[int, int, list[dict]]:
         """Update one-by-one using a thread pool."""
-        return self._parallel_table_api(records, mode="update")
+        ok, fail, failed, _ = self._parallel_table_api(records, mode="update")
+        return ok, fail, failed
 
     def _parallel_table_api(
         self, records: list[dict], mode: str
-    ) -> tuple[int, int, list[dict]]:
+    ) -> tuple[int, int, list[dict], list[str]]:
         ok, fail = 0, 0
         failed: list[dict] = []
+        inserted_ids: list[str] = []
 
-        def _do_one(rec: dict) -> tuple[bool, dict]:
+        def _do_one(rec: dict) -> tuple[bool, dict, str]:
             mapped = self._apply_mapping(rec)
             mapped.pop("_target_sys_id", None)
             try:
                 if mode == "insert":
                     if "sys_id" in rec and "sys_id" not in mapped:
                         mapped["sys_id"] = rec["sys_id"]
-                    self.client.insert_record(self.table, mapped)
+                    result = self.client.insert_record(self.table, mapped)
+                    # insert_record returns the created record — capture sys_id
+                    new_sid = result.get("sys_id", "") if isinstance(result, dict) else ""
+                    return True, rec, new_sid
                 else:
                     # Use _target_sys_id (from coalesce diff) or fall back
                     patch_sid = rec.get("_target_sys_id", rec.get("sys_id", ""))
                     mapped.pop("sys_id", None)
                     self.client.update_record(self.table, patch_sid, mapped)
-                return True, rec
+                    return True, rec, ""
             except Exception as exc:
                 logger.error(
                     "Single-record %s failed (sys_id=%s): %s",
                     mode, rec.get("sys_id", "?"), str(exc)[:300],
                 )
-                return False, rec
+                return False, rec, ""
 
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
             futures = {pool.submit(_do_one, rec): rec for rec in records}
             for future in as_completed(futures):
-                success, rec = future.result()
+                success, rec, new_sid = future.result()
                 if success:
                     ok += 1
+                    if new_sid:
+                        inserted_ids.append(new_sid)
                 else:
                     fail += 1
                     failed.append(rec)
@@ -479,7 +516,7 @@ class BulkLoader:
             "Inserted" if mode == "insert" else "Updated",
             ok, fail,
         )
-        return ok, fail, failed
+        return ok, fail, failed, inserted_ids
 
     # ── Helpers ──────────────────────────────────────────────────────
 

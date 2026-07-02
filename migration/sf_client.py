@@ -825,3 +825,43 @@ class SalesforceClient:
         )
         resp.raise_for_status()
         return resp.json()
+
+    # ─────────────────────────────────────────────────────────────────
+    # Delete operations (used by rollback)
+    # ─────────────────────────────────────────────────────────────────
+
+    def delete_record(self, object_name: str, record_id: str) -> None:
+        """
+        Delete a single SF record by Id.
+
+        HTTP 204 and 404 are treated as success so rollback is idempotent.
+        """
+        resp = self._request(
+            "DELETE",
+            f"{self._api_base}/sobjects/{object_name}/{record_id}",
+        )
+        if resp.status_code not in (200, 204, 404):
+            resp.raise_for_status()
+
+    def sobject_collections_delete(self, record_ids: list[str]) -> list[dict]:
+        """
+        Delete up to 200 records in a single call via the SObject
+        Collections composite endpoint.
+
+        Parameters
+        ----------
+        record_ids : list[str]
+            SF record Ids to delete (max 200 per call).
+
+        Returns list of result dicts ``{id, success, errors}``.
+        """
+        # SF Collections DELETE uses a query parameter, not a body
+        ids_param = ",".join(record_ids[:200])
+        resp = self._request(
+            "DELETE",
+            f"{self._api_base}/composite/sobjects",
+            params={"ids": ids_param, "allOrNone": "false"},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
