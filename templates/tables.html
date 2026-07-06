@@ -36,6 +36,11 @@
     <div class="wizard-flow-connector"></div>
     <div class="wizard-flow-step">
         <div class="wizard-flow-step__num">4</div>
+        <span class="wizard-flow-step__label">Filters & Preview</span>
+    </div>
+    <div class="wizard-flow-connector"></div>
+    <div class="wizard-flow-step">
+        <div class="wizard-flow-step__num">5</div>
         <span class="wizard-flow-step__label">Migrate</span>
     </div>
 </div>
@@ -194,6 +199,19 @@
                 </button>`;
             chipWrap.innerHTML = '';
             chipWrap.appendChild(chip);
+
+            // Auto-suggest: when source is selected, prefill target with same name
+            if (instance === 'source') {
+                const targetInput  = document.getElementById('targetSearch');
+                const targetHidden = document.getElementById('target_table');
+                const targetChipWrap = document.getElementById('targetChipWrap');
+                // Only auto-fill if target is currently empty
+                if (targetInput && !targetHidden.value) {
+                    targetInput.value = name;
+                    // Trigger a search so the dropdown opens with results
+                    targetInput.dispatchEvent(new Event('input'));
+                }
+            }
         }
 
         function showLoading() {
@@ -259,16 +277,32 @@
                     : `/api/search_tables?q=${encodeURIComponent(q)}&instance=${instance}`;
 
                 fetch(apiUrl)
-                    .then(r => r.json())
-                    .then(data => {
+                    .then(r => {
+                        if (!r.ok) throw new Error(`Server error ${r.status}`);
+                        return r.text();
+                    })
+                    .then(text => {
+                        if (!text || !text.trim()) {
+                            dropdown.innerHTML = '<div class="search-dropdown__empty">No results — check connection</div>';
+                            dropdown.classList.add('open');
+                            return;
+                        }
+                        let data;
+                        try { data = JSON.parse(text); } catch(e) {
+                            dropdown.innerHTML = '<div class="search-dropdown__empty">Connection error — please retry</div>';
+                            dropdown.classList.add('open');
+                            return;
+                        }
                         if (data.error) {
                             dropdown.innerHTML = `<div class="search-dropdown__empty">Error: ${data.error}</div>`;
+                            dropdown.classList.add('open');
                             return;
                         }
                         renderResults(data, q);
                     })
-                    .catch(() => {
-                        dropdown.innerHTML = '<div class="search-dropdown__empty">Search failed — check connection</div>';
+                    .catch(err => {
+                        dropdown.innerHTML = `<div class="search-dropdown__empty">Search failed — ${err.message || 'check connection'}</div>`;
+                        dropdown.classList.add('open');
                     });
             }, 350);
         });

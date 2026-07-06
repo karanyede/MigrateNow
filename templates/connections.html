@@ -600,6 +600,7 @@
 
         document.getElementById('editModal').classList.add('open');
         document.getElementById('editForm').action = '/connections/' + id + '/edit';
+        document.getElementById('editForm').dataset.connId = id;
         document.getElementById('editPlatform').value = platform;
         document.getElementById('editName').value = name;
 
@@ -630,20 +631,23 @@
 
     function testEditConnection() {
         const platform = document.getElementById('editPlatform').value;
+        const connId   = document.getElementById('editForm').dataset.connId || '';
         let payload;
         if (platform === 'sn') {
             payload = {
-                platform: 'sn',
-                instance: document.getElementById('editInstance').value,
-                username: document.getElementById('editUsername').value,
-                password: document.getElementById('editSNPassword').value
+                platform:  'sn',
+                conn_id:   connId,
+                instance:  document.getElementById('editInstance').value,
+                username:  document.getElementById('editUsername').value,
+                password:  document.getElementById('editSNPassword').value
             };
         } else {
             payload = {
-                platform: 'sf',
-                login_url: document.getElementById('editLoginUrl').value,
-                username: document.getElementById('editSFUsername').value,
-                password: document.getElementById('editSFPassword').value,
+                platform:       'sf',
+                conn_id:        connId,
+                login_url:      document.getElementById('editLoginUrl').value,
+                username:       document.getElementById('editSFUsername').value,
+                password:       document.getElementById('editSFPassword').value,
                 security_token: document.getElementById('editSFToken').value
             };
         }

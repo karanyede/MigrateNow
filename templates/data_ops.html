@@ -1,0 +1,644 @@
+{% extends "base.html" %}
+
+{% block title %}File Handling{% endblock %}
+{% block page_title %}File Handling{% endblock %}
+{% block breadcrumb %}
+<span>File Handling</span>
+<span class="page-header__breadcrumb-sep">›</span>
+<span>Import, Export & Clean</span>
+{% endblock %}
+
+{% block header_actions %}
+<a href="{{ url_for('home') }}" class="btn btn-secondary btn-sm">← Dashboard</a>
+{% endblock %}
+
+{% block content %}
+<div class="data-ops-layout" style="display:grid; grid-template-columns:300px minmax(0, 1fr); gap:1.5rem; animation:fadeSlideIn 0.4s ease both;">
+    
+    <!-- Left Sidebar Settings -->
+    <div style="display:flex; flex-direction:column; gap:1.25rem;">
+        
+        <!-- Connection Card -->
+        <div class="card" style="margin-bottom:0;">
+            <div class="card__title" style="font-size:0.9rem; margin-bottom:0.75rem;">Connection Profile</div>
+            <div class="form-group" style="margin-bottom:0;">
+                <select class="form-input" id="selConnection" style="background:var(--surface-3); border:1px solid var(--border-moderate);">
+                    <option value="">-- Select Profile --</option>
+                    {% for c in connections %}
+                    <option value="{{ c.id }}" data-platform="{{ c.platform }}">
+                        {{ c.name }} ({{ 'SN' if c.platform == 'sn' else 'SF' }})
+                    </option>
+                    {% endfor %}
+                </select>
+                <div style="font-size:0.7rem; color:var(--text-muted); margin-top:0.4rem;">
+                    Queries are executed directly against this active instance/org.
+                </div>
+            </div>
+        </div>
+
+        <!-- Task Actions Panel -->
+        <div class="card" style="margin-bottom:0; display:flex; flex-direction:column; gap:0.5rem;">
+            <div class="card__title" style="font-size:0.9rem; margin-bottom:0.5rem;">Task Options</div>
+            <button class="btn btn-secondary btn-sm active-tab-btn" id="btnTabQuery" onclick="switchTab('query')" style="justify-content:flex-start; text-align:left; width:100%;">
+                🔍 Run Queries
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btnTabInsert" onclick="switchTab('insert')" style="justify-content:flex-start; text-align:left; width:100%;">
+                📥 Import File (CSV/JSON)
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btnTabExport" onclick="switchTab('export')" style="justify-content:flex-start; text-align:left; width:100%;">
+                📤 Data Export
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btnTabDelete" onclick="switchTab('delete')" style="justify-content:flex-start; text-align:left; width:100%;">
+                🗑 Delete Records
+            </button>
+        </div>
+
+    </div>
+
+    <!-- Right Workspace Pane -->
+    <div style="display:flex; flex-direction:column; gap:1.25rem;">
+        
+        <!-- Tab 1: Query Executor -->
+        <div id="paneQuery" class="card pane-container" style="margin-bottom:0;">
+            <div class="card__title" style="font-size:1rem; margin-bottom:0.25rem;">Run Queries</div>
+            <div class="card__subtitle" id="queryHelpText">
+                Enter a SOQL query for Salesforce (e.g. <code>SELECT Id, Name, Email FROM Contact LIMIT 10</code>)
+            </div>
+            
+            <div class="form-group" style="margin-top:1rem; margin-bottom:1rem;">
+                <textarea class="form-input" id="txtQuery" rows="5" style="font-family:'JetBrains Mono',monospace; font-size:0.82rem; background:var(--surface-3); border:1px solid var(--border-moderate); color:var(--text-primary); resize:vertical;" placeholder="Write query here..."></textarea>
+            </div>
+
+            <div style="display:flex; gap:0.75rem;">
+                <button class="btn btn-primary" id="btnRunQuery" onclick="runQuery()">
+                    ⚡ Run Query
+                </button>
+                <button class="btn btn-secondary" id="btnExportCsv" onclick="downloadGridCsv()" disabled>
+                    📥 Export CSV
+                </button>
+            </div>
+        </div>
+
+        <!-- Tab 2: Bulk Import -->
+        <div id="paneInsert" class="card pane-container" style="margin-bottom:0; display:none;">
+            <div class="card__title" style="font-size:1rem; margin-bottom:0.25rem;">Import File (CSV/JSON)</div>
+            <div class="card__subtitle">
+                Upload a CSV or JSON file containing records to import into your target table/object.
+            </div>
+
+            <div class="form-group" style="margin-top:1.25rem;">
+                <label for="txtInsertTable">Target Table / SObject API Name</label>
+                <input type="text" class="form-input" id="txtInsertTable" placeholder="e.g. Lead, Contact, or u_custom_table" style="background:var(--surface-3);">
+            </div>
+
+            <div class="form-group" style="margin-bottom:1.25rem;">
+                <label>Upload File (CSV or JSON)</label>
+                <div style="border:2px dashed var(--border-moderate); border-radius:8px; padding:1.5rem; text-align:center; background:rgba(255,255,255,0.01);">
+                    <input type="file" id="fileInsertCsv" accept=".csv,.json" style="display:none;" onchange="handleInsertFile(this)">
+                    <label for="fileInsertCsv" class="btn btn-secondary btn-sm" style="cursor:pointer; display:inline-flex;">
+                        Select File
+                    </label>
+                    <div id="insertFileStatus" style="font-size:0.75rem; color:var(--text-muted); margin-top:0.5rem;">
+                        Columns/keys in CSV/JSON must match the API field names of the target table exactly.
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn btn-success" id="btnRunInsert" onclick="runInsert()" disabled>
+                📥 Execute Import
+            </button>
+        </div>
+
+        <!-- Tab 3: Data Export -->
+        <div id="paneExport" class="card pane-container" style="margin-bottom:0; display:none;">
+            <div class="card__title" style="font-size:1rem; margin-bottom:0.25rem;">Data Export</div>
+            <div class="card__subtitle">
+                Query and download records directly to your device as CSV or JSON.
+            </div>
+
+            <div class="form-group" style="margin-top:1.25rem;">
+                <label for="txtExportTable">Target Table / SObject Name <span style="color:var(--rose);">*</span></label>
+                <input type="text" class="form-input" id="txtExportTable" placeholder="e.g. Lead, incident, or sys_user" style="background:var(--surface-3);">
+            </div>
+
+            <div class="form-group">
+                <label for="txtExportFields">Fields (Comma-separated)</label>
+                <input type="text" class="form-input" id="txtExportFields" placeholder="e.g. Id, Name, Email (leave blank to export all fields)" style="background:var(--surface-3);">
+                <div style="font-size:0.7rem; color:var(--text-muted); margin-top:0.25rem;">
+                    For Salesforce, leaving blank will auto-discover and request all standard queryable fields.
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="txtExportFilter">Filter Query / WHERE Clause Suffix</label>
+                <input type="text" class="form-input" id="txtExportFilter" placeholder="e.g. active=true (ServiceNow) or Email != null (Salesforce)" style="background:var(--surface-3);">
+            </div>
+
+            <div class="form-group">
+                <label for="selExportFormat">Export Format</label>
+                <select class="form-input" id="selExportFormat" style="background:var(--surface-3); border:1px solid var(--border-moderate);">
+                    <option value="csv">CSV (Comma-separated values)</option>
+                    <option value="json">JSON (Array of objects)</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom:1.5rem;">
+                <label for="txtExportLimit">Record Limit</label>
+                <input type="number" class="form-input" id="txtExportLimit" value="1000" min="1" max="10000" style="background:var(--surface-3);">
+            </div>
+
+            <button class="btn btn-primary" id="btnRunExport" onclick="runExport()">
+                📤 Export & Download
+            </button>
+        </div>
+
+        <!-- Tab 4: Bulk Delete -->
+        <div id="paneDelete" class="card pane-container" style="margin-bottom:0; display:none;">
+            <div class="card__title" style="font-size:1rem; margin-bottom:0.25rem;">Delete Records</div>
+            <div class="card__subtitle">
+                Delete multiple records from the target by uploading a CSV containing IDs or entering them manually.
+            </div>
+
+            <div class="form-group" style="margin-top:1.25rem;">
+                <label for="txtDeleteTable">Target Table / SObject API Name</label>
+                <input type="text" class="form-input" id="txtDeleteTable" placeholder="e.g. Contact, or u_custom_table" style="background:var(--surface-3);">
+            </div>
+
+            <div class="form-group">
+                <label>Specify IDs to Delete</label>
+                <textarea class="form-input" id="txtDeleteIds" rows="4" style="font-family:'JetBrains Mono',monospace; font-size:0.8rem; background:var(--surface-3); border:1px solid var(--border-moderate);" placeholder="Enter comma-separated IDs (e.g. 0038W00002EgpjQ, 0038W00002EgpjR)"></textarea>
+            </div>
+
+            <div style="text-align:center; font-size:0.8rem; color:var(--text-muted); margin:0.75rem 0;">— OR —</div>
+
+            <div class="form-group" style="margin-bottom:1.5rem;">
+                <div style="border:1px dashed var(--border-subtle); border-radius:6px; padding:1rem; text-align:center; background:rgba(255,255,255,0.01);">
+                    <input type="file" id="fileDeleteCsv" accept=".csv" style="display:none;" onchange="handleDeleteFile(this)">
+                    <label for="fileDeleteCsv" class="btn btn-secondary btn-sm" style="cursor:pointer; display:inline-flex;">
+                        Upload CSV with IDs
+                    </label>
+                    <div id="deleteFileStatus" style="font-size:0.75rem; color:var(--text-muted); margin-top:0.4rem;">
+                        CSV should contain an 'Id' or 'sys_id' column.
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn btn-danger" id="btnRunDelete" onclick="runDelete()">
+                ⚠ Execute Bulk Delete
+            </button>
+        </div>
+
+        <!-- Progress/Status Loader -->
+        <div id="dataOpsStatus" class="card" style="display:none; background:rgba(124,58,237,0.05); border:1px solid rgba(124,58,237,0.15);">
+            <div style="display:flex; align-items:center; gap:0.75rem;">
+                <span class="spinner-sm" id="opsSpinner"></span>
+                <span id="opsStatusMsg" style="font-size:0.85rem; color:var(--text-primary);">Processing...</span>
+            </div>
+        </div>
+
+        <!-- Data Grid Results -->
+        <div class="card" id="resultsGridCard" style="display:none; margin-bottom:0; max-width:100%; overflow-x:auto;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+                <div class="card__title" style="font-size:0.95rem; margin:0;" id="resultsTitle">Query Results</div>
+                <div style="font-size:0.75rem; color:var(--text-muted);" id="rowCounter">0 rows</div>
+            </div>
+            
+            <div style="overflow-x:auto; max-width:100%; max-height:400px; border:1px solid var(--border-subtle); border-radius:var(--radius-sm);">
+                <table class="mapping-table" id="tblResults" style="min-width:100%;">
+                    <thead>
+                        <tr id="tblHeaderRow"></tr>
+                    </thead>
+                    <tbody id="tblBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let activeTab = 'query';
+    let loadedRecords = [];
+    let parsedInsertRecords = [];
+    let parsedDeleteIds = [];
+
+    // Switch active view tabs
+    function switchTab(tab) {
+        activeTab = tab;
+        
+        // Update tab buttons
+        document.getElementById('btnTabQuery').classList.toggle('active-tab-btn', tab === 'query');
+        document.getElementById('btnTabInsert').classList.toggle('active-tab-btn', tab === 'insert');
+        document.getElementById('btnTabExport').classList.toggle('active-tab-btn', tab === 'export');
+        document.getElementById('btnTabDelete').classList.toggle('active-tab-btn', tab === 'delete');
+
+        // Toggle panes
+        document.getElementById('paneQuery').style.display = tab === 'query' ? '' : 'none';
+        document.getElementById('paneInsert').style.display = tab === 'insert' ? '' : 'none';
+        document.getElementById('paneExport').style.display = tab === 'export' ? '' : 'none';
+        document.getElementById('paneDelete').style.display = tab === 'delete' ? '' : 'none';
+
+        // Clear status
+        hideStatus();
+        document.getElementById('resultsGridCard').style.display = 'none';
+    }
+
+    // Toggle query placeholders based on SN / SF selection
+    document.getElementById('selConnection').addEventListener('change', function() {
+        const opt = this.options[this.selectedIndex];
+        if (!opt || !opt.value) return;
+        const platform = opt.dataset.platform;
+        const helpText = document.getElementById('queryHelpText');
+        const txtArea = document.getElementById('txtQuery');
+
+        if (platform === 'sn') {
+            helpText.innerHTML = 'Enter a ServiceNow table query format: <code>table_name:encoded_query</code> (e.g. <code>sys_user:active=true^emailISNOTEMPTY</code>)';
+            txtArea.placeholder = 'e.g. incident:priority=1^active=true';
+        } else {
+            helpText.innerHTML = 'Enter a SOQL query for Salesforce (e.g. <code>SELECT Id, Name, Email FROM Contact LIMIT 10</code>)';
+            txtArea.placeholder = 'SELECT Id, Name, Email FROM Contact LIMIT 10';
+        }
+    });
+
+    function showStatus(msg) {
+        const el = document.getElementById('dataOpsStatus');
+        const msgEl = document.getElementById('opsStatusMsg');
+        el.style.display = 'block';
+        msgEl.textContent = msg;
+    }
+
+    function hideStatus() {
+        document.getElementById('dataOpsStatus').style.display = 'none';
+    }
+
+    // ─── Query Executor ───
+    function runQuery() {
+        const connId = document.getElementById('selConnection').value;
+        const query = document.getElementById('txtQuery').value.trim();
+
+        if (!connId) { showToast('Please select a connection profile.', 'error'); return; }
+        if (!query) { showToast('Please enter a query.', 'error'); return; }
+
+        showStatus('Running query...');
+        document.getElementById('resultsGridCard').style.display = 'none';
+        document.getElementById('btnExportCsv').disabled = true;
+
+        fetch('/api/data-ops/query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ conn_id: connId, query: query })
+        })
+        .then(res => {
+            if (!res.ok) return res.json().then(e => { throw new Error(e.error || 'Server error') });
+            return res.json();
+        })
+        .then(data => {
+            hideStatus();
+            if (data.ok && data.records && data.records.length > 0) {
+                loadedRecords = data.records;
+                renderDataGrid(data.records);
+                document.getElementById('btnExportCsv').disabled = false;
+                showToast(`Found ${data.records.length} records.`, 'success');
+            } else {
+                showToast('No records found matching this query.', 'info');
+            }
+        })
+        .catch(err => {
+            hideStatus();
+            showToast('Query failed: ' + err.message, 'error');
+        });
+    }
+
+    // ─── Render Data Grid ───
+    function renderDataGrid(records) {
+        const headRow = document.getElementById('tblHeaderRow');
+        const tblBody = document.getElementById('tblBody');
+        headRow.innerHTML = '';
+        tblBody.innerHTML = '';
+
+        // Extract clean unique columns from JSON records (skipping 'attributes')
+        const cols = new Set();
+        records.forEach(r => {
+            Object.keys(r).forEach(k => {
+                if (k !== 'attributes') cols.add(k);
+            });
+        });
+        const colList = Array.from(cols);
+
+        // Render header
+        colList.forEach(c => {
+            const th = document.createElement('th');
+            th.textContent = c;
+            headRow.appendChild(th);
+        });
+
+        // Render rows
+        records.forEach(r => {
+            const tr = document.createElement('tr');
+            colList.forEach(c => {
+                const td = document.createElement('td');
+                const val = r[c];
+                if (typeof val === 'object' && val !== null) {
+                    td.textContent = JSON.stringify(val);
+                } else {
+                    td.textContent = val !== undefined ? val : '—';
+                }
+                tr.appendChild(td);
+            });
+            tblBody.appendChild(tr);
+        });
+
+        document.getElementById('rowCounter').textContent = `${records.length} records`;
+        document.getElementById('resultsTitle').textContent = 'Query Results';
+        document.getElementById('resultsGridCard').style.display = 'block';
+    }
+
+    // ─── Export Grid to CSV ───
+    function downloadGridCsv() {
+        if (loadedRecords.length === 0) return;
+
+        const cols = new Set();
+        loadedRecords.forEach(r => {
+            Object.keys(r).forEach(k => {
+                if (k !== 'attributes') cols.add(k);
+            });
+        });
+        const colList = Array.from(cols);
+
+        const rows = [colList];
+        loadedRecords.forEach(r => {
+            const rowVal = colList.map(c => {
+                let v = r[c];
+                if (typeof v === 'object' && v !== null) v = JSON.stringify(v);
+                return v !== undefined ? String(v).replace(/"/g, '""') : '';
+            });
+            rows.push(rowVal);
+        });
+
+        const csvContent = rows.map(e => e.map(val => '"' + val + '"').join(",")).join("\n");
+        const blob = new Blob([csvContent], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "dataops_query_" + Date.now() + ".csv";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    // ─── Bulk Import Handler ───
+    function handleInsertFile(input) {
+        const file = input.files[0];
+        const statusEl = document.getElementById('insertFileStatus');
+        const runBtn = document.getElementById('btnRunInsert');
+        if (!file) return;
+
+        statusEl.textContent = `Reading ${file.name}...`;
+        runBtn.disabled = true;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            const text = evt.target.result;
+            if (file.name.toLowerCase().endsWith('.json')) {
+                try {
+                    const parsed = JSON.parse(text);
+                    const recordsList = Array.isArray(parsed) ? parsed : [parsed];
+                    parsedInsertRecords = recordsList;
+                    statusEl.innerHTML = `✓ Ready: <strong>${parsedInsertRecords.length}</strong> records parsed from JSON.`;
+                    runBtn.disabled = false;
+                } catch (e) {
+                    statusEl.textContent = 'Failed to parse JSON file: ' + e.message;
+                }
+            } else {
+                // Parse CSV to JSON array
+                const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+                if (lines.length < 2) {
+                    statusEl.textContent = 'CSV must contain a header row and at least one data row.';
+                    return;
+                }
+
+                const headers = lines[0].split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
+                parsedInsertRecords = [];
+
+                for (let i = 1; i < lines.length; i++) {
+                    const vals = lines[i].split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
+                    if (vals.length < headers.length) continue;
+                    
+                    const rec = {};
+                    headers.forEach((h, idx) => {
+                        rec[h] = vals[idx];
+                    });
+                    parsedInsertRecords.push(rec);
+                }
+
+                statusEl.innerHTML = `✓ Ready: <strong>${parsedInsertRecords.length}</strong> records parsed from CSV.`;
+                runBtn.disabled = false;
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    function runInsert() {
+        const connId = document.getElementById('selConnection').value;
+        const table = document.getElementById('txtInsertTable').value.trim();
+
+        if (!connId) { showToast('Please select a connection profile.', 'error'); return; }
+        if (!table) { showToast('Please enter a target table / object name.', 'error'); return; }
+        if (parsedInsertRecords.length === 0) { showToast('No records loaded.', 'error'); return; }
+
+        showStatus(`Importing ${parsedInsertRecords.length} records...`);
+        document.getElementById('btnRunInsert').disabled = true;
+
+        fetch('/api/data-ops/insert', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                conn_id: connId,
+                table: table,
+                records: parsedInsertRecords
+            })
+        })
+        .then(res => {
+            if (!res.ok) return res.json().then(e => { throw new Error(e.error || 'Server error') });
+            return res.json();
+        })
+        .then(data => {
+            hideStatus();
+            document.getElementById('btnRunInsert').disabled = false;
+            showToast(`Import completed: ${data.inserted} successfully inserted, ${data.failed} failed.`, 'success');
+        })
+        .catch(err => {
+            hideStatus();
+            document.getElementById('btnRunInsert').disabled = false;
+            showToast('Import failed: ' + err.message, 'error');
+        });
+    }
+
+    // ─── Data Export ───
+    function runExport() {
+        const connId = document.getElementById('selConnection').value;
+        const table = document.getElementById('txtExportTable').value.trim();
+        const fields = document.getElementById('txtExportFields').value.trim();
+        const filter = document.getElementById('txtExportFilter').value.trim();
+        const format = document.getElementById('selExportFormat').value;
+        const limit = document.getElementById('txtExportLimit').value;
+
+        if (!connId) { showToast('Please select a connection profile.', 'error'); return; }
+        if (!table) { showToast('Please enter a table / object name.', 'error'); return; }
+
+        showStatus('Running export and generating file...');
+        
+        fetch('/api/data-ops/export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                conn_id: connId,
+                table: table,
+                fields: fields,
+                filter: filter,
+                format: format,
+                limit: limit
+            })
+        })
+        .then(res => {
+            if (!res.ok) return res.json().then(e => { throw new Error(e.error || 'Server error') });
+            
+            const disposition = res.headers.get('content-disposition');
+            let filename = `export_${table}_` + Date.now();
+            if (disposition && disposition.indexOf('attachment') !== -1) {
+                const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
+                const matches = filenameRegex.exec(disposition);
+                if (matches != null && matches[1]) {
+                    filename = matches[1].replace(/['"]/g, '');
+                }
+            }
+            if (format === 'json' && !filename.endsWith('.json')) filename += '.json';
+            if (format === 'csv' && !filename.endsWith('.csv')) filename += '.csv';
+
+            return res.blob().then(blob => ({ blob, filename }));
+        })
+        .then(({ blob, filename }) => {
+            hideStatus();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            showToast('Data exported successfully!', 'success');
+        })
+        .catch(err => {
+            hideStatus();
+            showToast('Export failed: ' + err.message, 'error');
+        });
+    }
+
+    // ─── Bulk Delete Handler ───
+    function handleDeleteFile(input) {
+        const file = input.files[0];
+        const statusEl = document.getElementById('deleteFileStatus');
+        if (!file) return;
+
+        statusEl.textContent = `Reading ${file.name}...`;
+
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            const text = evt.target.result;
+            const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+            if (lines.length === 0) {
+                statusEl.textContent = 'CSV is empty.';
+                return;
+            }
+
+            // Find column header index for 'Id' or 'sys_id'
+            const headers = lines[0].split(',').map(s => s.trim().toLowerCase().replace(/^["']|["']$/g, ''));
+            let idIdx = headers.indexOf('id');
+            if (idIdx === -1) idIdx = headers.indexOf('sys_id');
+
+            if (idIdx === -1) {
+                // assume first column contains IDs if no header found
+                idIdx = 0;
+            }
+
+            parsedDeleteIds = [];
+            for (let i = 1; i < lines.length; i++) {
+                const vals = lines[i].split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
+                if (vals[idIdx]) {
+                    parsedDeleteIds.push(vals[idIdx]);
+                }
+            }
+
+            statusEl.innerHTML = `✓ Ready: <strong>${parsedDeleteIds.length}</strong> IDs loaded from CSV.`;
+            document.getElementById('txtDeleteIds').value = parsedDeleteIds.join(', ');
+        };
+        reader.readAsText(file);
+    }
+
+    function runDelete() {
+        const connId = document.getElementById('selConnection').value;
+        const table = document.getElementById('txtDeleteTable').value.trim();
+        const idsText = document.getElementById('txtDeleteIds').value.trim();
+
+        if (!connId) { showToast('Please select a connection profile.', 'error'); return; }
+        if (!table) { showToast('Please enter a target table / object name.', 'error'); return; }
+
+        let ids = [];
+        if (idsText) {
+            ids = idsText.split(',').map(s => s.trim()).filter(s => s.length > 0);
+        }
+
+        if (ids.length === 0) {
+            showToast('Please specify or upload IDs to delete.', 'error');
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to delete ${ids.length} records? This operation is permanent.`)) {
+            return;
+        }
+
+        showStatus(`Deleting ${ids.length} records...`);
+        document.getElementById('btnRunDelete').disabled = true;
+
+        fetch('/api/data-ops/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                conn_id: connId,
+                table: table,
+                ids: ids
+            })
+        })
+        .then(res => {
+            if (!res.ok) return res.json().then(e => { throw new Error(e.error || 'Server error') });
+            return res.json();
+        })
+        .then(data => {
+            hideStatus();
+            document.getElementById('btnRunDelete').disabled = false;
+            showToast(`Delete completed: ${data.deleted} records deleted, ${data.failed} failed.`, 'success');
+        })
+        .catch(err => {
+            hideStatus();
+            document.getElementById('btnRunDelete').disabled = false;
+            showToast('Delete failed: ' + err.message, 'error');
+        });
+    }
+</script>
+
+<style>
+    /* Styling to support premium look & tabs */
+    .active-tab-btn {
+        background: var(--purple-accent-gradient, linear-gradient(135deg, #7c3aed, #4f46e5)) !important;
+        color: white !important;
+        border-color: transparent !important;
+    }
+    .pane-container {
+        animation: fadeSlideIn 0.3s ease both;
+    }
+</style>
+{% endblock %}

@@ -129,6 +129,17 @@ def _append_history(entry: dict) -> None:
     _save_history(history)
 
 
+def _clean_error_message(exc: Exception) -> str:
+    """Clean up raw exceptions (especially Salesforce SOAP faults) for display."""
+    msg = str(exc)
+    import re
+    if "<?xml" in msg or "soapenv:Envelope" in msg or "env:Envelope" in msg:
+        match = re.search(r"<faultstring>(.*?)</faultstring>", msg)
+        if match:
+            return f"Salesforce Error: {match.group(1)}"
+    return msg
+
+
 # ── Migration configs persistence ───────────────────────────────────
 
 def _load_configs() -> list[dict]:
@@ -228,6 +239,8 @@ def _save_migration_config_from_session() -> str:
     filter_conditions = session.get("filter_conditions", [])
     fetch_mode = session.get("fetch_mode", "auto")
     limit = session.get("limit")
+    orderby_field = session.get("orderby_field")
+    orderby_dir = session.get("orderby_dir", "ASC")
 
     # Generate a descriptive name
     name = f"{source_table} ➔ {target_table} ({mt.replace('_', '➔').upper()})"
@@ -241,7 +254,9 @@ def _save_migration_config_from_session() -> str:
             c.get("field_mapping") == field_mapping and
             c.get("filter_conditions") == filter_conditions and
             c.get("fetch_mode") == fetch_mode and
-            c.get("limit") == limit):
+            c.get("limit") == limit and
+            c.get("orderby_field") == orderby_field and
+            c.get("orderby_dir") == orderby_dir):
             
             if source_is_sn and c.get("source_instance") != session.get("source_instance"):
                 continue
@@ -268,6 +283,8 @@ def _save_migration_config_from_session() -> str:
             "filter_conditions": filter_conditions,
             "fetch_mode": fetch_mode,
             "limit": limit,
+            "orderby_field": orderby_field,
+            "orderby_dir": orderby_dir,
             "created_at": now_iso,
             "last_run_at": now_iso
         }
@@ -316,6 +333,46 @@ def _next_conn_id(conns: list[dict]) -> str:
     """Generate next sequential connection ID."""
     import uuid
     return str(uuid.uuid4())[:8]
+
+
+import re
+
+def _clean_error_message(exc: Exception | str) -> str:
+    """Extract a user-friendly error string from raw exceptions, SOAP envelopes or HTTP dumps."""
+    msg = str(exc).strip()
+    if not msg:
+        return "An unknown error occurred."
+
+    # If it contains Salesforce SOAP Fault XML
+    if "soapenv:Envelope" in msg or "<?xml" in msg:
+        fault_match = re.search(r"<faultstring>([^<]+)</faultstring>", msg)
+        if fault_match:
+            val = fault_match.group(1).strip()
+            if "API_CURRENTLY_DISABLED" in val:
+                return "Salesforce API is currently disabled (e.g. your trial or org has expired)."
+            return f"Salesforce login failed: {val}"
+        
+        code_match = re.search(r"<exceptionCode>([^<]+)</exceptionCode>", msg)
+        if code_match:
+            val = code_match.group(1).strip()
+            if val == "API_CURRENTLY_DISABLED":
+                return "Salesforce API is currently disabled (e.g. your trial or org has expired)."
+            return f"Salesforce error: {val}"
+            
+        return "Salesforce connection failed (API currently disabled or incorrect settings)."
+
+    if "API_CURRENTLY_DISABLED" in msg:
+        return "Salesforce API is currently disabled (e.g. your trial or org has expired)."
+
+    if msg.startswith("'") and msg.endswith("'"):
+        msg = msg[1:-1]
+    if msg.startswith('"') and msg.endswith('"'):
+        msg = msg[1:-1]
+
+    if len(msg) > 150:
+        return msg[:150] + "..."
+
+    return msg
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -390,7 +447,8 @@ def _auto_map_fields(
 @app.route("/", methods=["GET"])
 def home():
     """Home page — MigrateNow dashboard with stats and recent history."""
-    return render_template("home.html", history=_load_history())
+    conns = _load_connections()
+    return render_template("home.html", history=_load_history(), connections_count=len(conns))
 
 
 @app.route("/select-type", methods=["POST"])
@@ -526,7 +584,8 @@ def connect():
             src.fetch_page("sys_db_object", limit=1, fields=["name"])
             logger.info("Source SN connection OK: %s", session["source_instance"])
         except Exception as exc:
-            flash(f"Source SN connection failed: {exc}", "error")
+            clean_msg = _clean_error_message(exc)
+            flash(f"Source SN connection failed: {clean_msg}", "error")
             logger.error("Source SN connection failed: %s", exc)
             return redirect(url_for("connect_page"))
     elif source_is_sf:
@@ -535,7 +594,8 @@ def connect():
             sf_src.get_objects()  # validates auth + fetches object list
             logger.info("Source SF connection OK: %s", sf_src.instance)
         except Exception as exc:
-            flash(f"Source SF connection failed: {exc}", "error")
+            clean_msg = _clean_error_message(exc)
+            flash(f"Source SF connection failed: {clean_msg}", "error")
             logger.error("Source SF connection failed: %s", exc)
             return redirect(url_for("connect_page"))
 
@@ -546,7 +606,8 @@ def connect():
             tgt.fetch_page("sys_db_object", limit=1, fields=["name"])
             logger.info("Target SN connection OK: %s", session["target_instance"])
         except Exception as exc:
-            flash(f"Target SN connection failed: {exc}", "error")
+            clean_msg = _clean_error_message(exc)
+            flash(f"Target SN connection failed: {clean_msg}", "error")
             logger.error("Target SN connection failed: %s", exc)
             return redirect(url_for("connect_page"))
     elif target_is_sf:
@@ -555,7 +616,8 @@ def connect():
             sf_tgt.get_objects()
             logger.info("Target SF connection OK: %s", sf_tgt.instance)
         except Exception as exc:
-            flash(f"Target SF connection failed: {exc}", "error")
+            clean_msg = _clean_error_message(exc)
+            flash(f"Target SF connection failed: {clean_msg}", "error")
             logger.error("Target SF connection failed: %s", exc)
             return redirect(url_for("connect_page"))
 
@@ -723,13 +785,33 @@ def fields():
             if f["name"] not in SF_SYSTEM_FIELDS
         ]
 
+    # Filter out ServiceNow OOTB standard read-only system fields from the
+    # TARGET side. These are auto-populated by SN and writing to them either
+    # fails silently or causes API errors.  Users never need to map to them.
+    SN_SYSTEM_FIELDS = {
+        "sys_id", "sys_created_on", "sys_created_by",
+        "sys_updated_on", "sys_updated_by", "sys_mod_count",
+        "sys_class_name", "sys_tags", "sys_domain", "sys_domain_path",
+        "sys_overrides", "sys_package", "sys_policy", "sys_replace_on_upgrade",
+        "sys_scope", "sys_version",
+    }
+    if not target_is_sf:  # target is ServiceNow
+        target_fields = [
+            f for f in target_fields
+            if f["name"] not in SN_SYSTEM_FIELDS
+        ]
+
     logger.info(
         "FIELDS DIAGNOSTIC: target has %d fields after filter. Names: %s",
         len(target_fields),
         [f["name"] for f in target_fields],
     )
 
-    auto_map = _auto_map_fields(source_fields, target_fields)
+    saved_mapping = session.get("field_mapping")
+    if saved_mapping:
+        auto_map = saved_mapping
+    else:
+        auto_map = _auto_map_fields(source_fields, target_fields)
     manual_count = len(source_fields) - len(auto_map)
 
     logger.info(
@@ -751,8 +833,6 @@ def fields():
         auto_map=auto_map,
         auto_count=len(auto_map),
         manual_count=manual_count,
-        filter_conditions=session.get("filter_conditions", []),
-        limit=session.get("limit"),
     )
 
 
@@ -779,14 +859,172 @@ def map_fields():
     # Store the fetch mode selection from the UI
     session["fetch_mode"] = request.form.get("fetch_mode", "auto")
 
-    # Read and store filter conditions
+    # Read and store coalesce configuration
+    coalesce_config = request.form.get("coalesce_config", "")
+    try:
+        session["coalesce_config"] = json.loads(coalesce_config)
+    except Exception:
+        session["coalesce_config"] = {}
+
+    logger.info(
+        "Field mapping: %s | Fetch mode: %s | Coalesce: %s",
+        field_mapping,
+        session["fetch_mode"],
+        session["coalesce_config"],
+    )
+    return redirect(url_for("filters_page"))
+
+
+# ── Filters & Preview Step ──────────────────────────────────────────
+
+def _build_sn_query(filters: list) -> str:
+    """Converts filter conditions JSON → SN encoded query string."""
+    if not filters:
+        return ""
+    
+    group_queries = []
+    for group in filters:
+        if not group:
+            continue
+        cond_queries = []
+        for cond in group:
+            field = cond.get("field")
+            op = cond.get("op")
+            val = cond.get("value", "")
+            if not field or not op:
+                continue
+            if op == "EMPTY":
+                cond_queries.append(f"{field}ISEMPTY")
+            elif op == "NOTEMPTY":
+                cond_queries.append(f"{field}ISNOTEMPTY")
+            else:
+                cond_queries.append(f"{field}{op}{val}")
+        if cond_queries:
+            group_queries.append("^OR".join(cond_queries))
+    
+    if not group_queries:
+        return ""
+    return "^".join(group_queries)
+
+
+def _build_sf_where(filters: list) -> str:
+    """Converts filter conditions JSON → SOQL WHERE clause."""
+    if not filters:
+        return ""
+    
+    def escape_string(s: str) -> str:
+        return s.replace("'", "\\'")
+
+    def format_soql_val(val: str, op: str) -> str:
+        val = val.strip()
+        if op.upper() == "IN":
+            parts = [p.strip() for p in val.split(",") if p.strip()]
+            formatted_parts = []
+            for p in parts:
+                if p.lower() in ("true", "false"):
+                    formatted_parts.append(p.lower())
+                else:
+                    try:
+                        float(p)
+                        formatted_parts.append(p)
+                    except ValueError:
+                        formatted_parts.append(f"'{escape_string(p)}'")
+            return "(" + ", ".join(formatted_parts) + ")"
+        
+        if val.lower() in ("true", "false"):
+            return val.lower()
+        try:
+            float(val)
+            return val
+        except ValueError:
+            escaped = escape_string(val)
+            if op.upper() == "LIKE":
+                if not escaped.startswith("%") and not escaped.endswith("%"):
+                    return f"'%{escaped}%'"
+            return f"'{escaped}'"
+
+    group_queries = []
+    for group in filters:
+        if not group:
+            continue
+        cond_queries = []
+        for cond in group:
+            field = cond.get("field")
+            op = cond.get("op")
+            val = cond.get("value", "")
+            if not field or not op:
+                continue
+            
+            op_upper = op.upper()
+            if op_upper in ("IS NULL", "IS NOT NULL"):
+                cond_queries.append(f"{field} {op_upper}")
+            else:
+                formatted_val = format_soql_val(val, op)
+                cond_queries.append(f"{field} {op} {formatted_val}")
+        
+        if cond_queries:
+            if len(cond_queries) > 1:
+                group_queries.append("(" + " OR ".join(cond_queries) + ")")
+            else:
+                group_queries.append(cond_queries[0])
+    
+    if not group_queries:
+        return ""
+    return " AND ".join(group_queries)
+
+
+@app.route("/filters", methods=["GET"])
+def filters_page():
+    """Show filters and data preview UI (Step 4 of 5)."""
+    src_table = session.get("source_table")
+    tgt_table = session.get("target_table")
+    mt = session.get("migration_type", "sn_sn")
+    if not src_table or not tgt_table:
+        flash("Select tables first.", "error")
+        return redirect(url_for("tables"))
+
+    source_fields = session.get("_source_fields", [])
+    target_fields = session.get("_target_fields", [])
+
+    if not source_fields:
+        source_is_sf = mt in ("sf_sf", "sf_sn")
+        try:
+            if source_is_sf:
+                src_client = _build_sf_client("source")
+                source_fields = src_client.get_object_fields(src_table)
+            else:
+                src_client = _build_client("source")
+                source_fields = src_client.get_table_fields(src_table)
+                choices_map = src_client.get_choice_values(src_table)
+                for f in source_fields:
+                    f["choices"] = choices_map.get(f["name"], [])
+            session["_source_fields"] = source_fields
+        except Exception as exc:
+            logger.error("Failed to fetch source fields for filters preview: %s", exc)
+
+    return render_template(
+        "filters.html",
+        migration_type=mt,
+        source_table=src_table,
+        target_table=tgt_table,
+        source_fields=source_fields,
+        target_fields=target_fields,
+        filter_conditions=session.get("filter_conditions", []),
+        limit=session.get("limit"),
+        orderby_field=session.get("orderby_field"),
+        orderby_dir=session.get("orderby_dir", "ASC"),
+    )
+
+
+@app.route("/filters", methods=["POST"])
+def save_filters():
+    """Save filter conditions, limit, and orderby config into the session, then proceed to confirm."""
     filter_conditions = request.form.get("filter_conditions", "[]")
     try:
         session["filter_conditions"] = json.loads(filter_conditions)
     except Exception:
         session["filter_conditions"] = []
 
-    # Read and store limit
     limit_str = request.form.get("limit", "").strip()
     if limit_str:
         try:
@@ -796,17 +1034,106 @@ def map_fields():
     else:
         session["limit"] = None
 
+    session["orderby_field"] = request.form.get("orderby_field", "").strip() or None
+    session["orderby_dir"] = request.form.get("orderby_dir", "ASC").strip()
+
     # Auto-save migration config!
     _save_migration_config_from_session()
 
     logger.info(
-        "Field mapping: %s | Fetch mode: %s | Filters: %s | Limit: %s",
-        field_mapping,
-        session["fetch_mode"],
+        "Filters saved: %s | Limit: %s | OrderBy: %s %s",
         session["filter_conditions"],
         session["limit"],
+        session["orderby_field"],
+        session["orderby_dir"],
     )
-    return redirect(url_for("migrate"))
+    return redirect(url_for("migrate_confirm"))
+
+
+@app.route("/api/preview_data", methods=["POST"])
+def api_preview_data():
+    """Run a query on the source instance using filter conditions, returning first 10 records and total match count."""
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        filters = data.get("filter_conditions", [])
+        orderby_field = data.get("orderby_field")
+        orderby_dir = data.get("orderby_dir", "ASC")
+
+        mt = session.get("migration_type", "sn_sn")
+        src_table = session.get("source_table")
+        if not src_table:
+            return jsonify({"error": "No source table in session."}), 400
+
+        source_is_sf = mt in ("sf_sf", "sf_sn")
+        tracker = _get_tracker()
+
+        records = []
+        total_count = 0
+
+        if source_is_sf:
+            sf = _build_sf_client("source")
+            f_meta = sf.get_object_fields(src_table)
+            field_list = [f["name"] for f in f_meta if f.get("type") not in ("address", "location")]
+            if not field_list:
+                field_list = ["Id", "Name"]
+
+            query = f"SELECT {', '.join(field_list)} FROM {src_table}"
+            where_clause = _build_sf_where(filters)
+            if where_clause:
+                query += f" WHERE {where_clause}"
+            
+            if orderby_field:
+                query += f" ORDER BY {orderby_field} {orderby_dir}"
+                
+            query_preview = query + " LIMIT 10"
+            
+            records = sf.query(query_preview)
+            
+            count_query = f"SELECT COUNT() FROM {src_table}"
+            if where_clause:
+                count_query += f" WHERE {where_clause}"
+            
+            try:
+                resp = sf._request("GET", f"{sf._api_base}/query/", params={"q": count_query})
+                resp.raise_for_status()
+                total_count = resp.json().get("totalSize", 0)
+            except Exception as e:
+                logger.error("Salesforce preview count failed: %s", e)
+                total_count = len(records)
+        else:
+            client = _build_client("source")
+            sn_query = _build_sn_query(filters)
+            
+            extra_query = sn_query
+            if orderby_field:
+                if orderby_dir == "DESC":
+                    orderby_str = f"ORDERBYDESC{orderby_field}"
+                else:
+                    orderby_str = f"ORDERBY{orderby_field}"
+                if extra_query:
+                    extra_query += f"^{orderby_str}"
+                else:
+                    extra_query = orderby_str
+
+            records = client.fetch_page(src_table, limit=10, extra_query=extra_query)
+            
+            try:
+                params = {"sysparm_count": "true"}
+                if sn_query:
+                    params["sysparm_query"] = sn_query
+                resp = client._request("GET", f"/api/now/stats/{src_table}", params=params)
+                resp.raise_for_status()
+                stats_res = resp.json().get("result", {})
+                total_count = int(stats_res.get("stats", {}).get("count", 0))
+            except Exception as e:
+                logger.error("ServiceNow preview count failed: %s", e)
+                total_count = len(records)
+
+        return jsonify({"ok": True, "records": records, "total_count": total_count})
+
+    except Exception as exc:
+        logger.error("Preview data failed: %s", exc)
+        return jsonify({"error": str(exc)}), 500
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -987,6 +1314,25 @@ def api_clear_history():
     return redirect(url_for("history"))
 
 
+@app.route("/api/report/pdf", methods=["POST"])
+def api_report_pdf():
+    """AJAX/POST endpoint — generates a custom PDF report from JSON migration stats."""
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        from simple_pdf import SimplePDFWriter
+        pdf_bytes = SimplePDFWriter().generate(data)
+        
+        from flask import make_response
+        import time
+        response = make_response(pdf_bytes)
+        response.headers["Content-Type"] = "application/pdf"
+        response.headers["Content-Disposition"] = f"attachment; filename=migratenow_report_{int(time.time())}.pdf"
+        return response
+    except Exception as exc:
+        logger.error("PDF generation failed: %s", exc)
+        return jsonify({"error": str(exc)}), 500
+
+
 # ─────────────────────────────────────────────────────────────────────
 # Connections (saved credential profiles)
 # ─────────────────────────────────────────────────────────────────────
@@ -1054,32 +1400,70 @@ def api_connections():
 
 @app.route("/api/test_connection", methods=["POST"])
 def api_test_connection():
-    """Test connectivity for given credentials. Returns JSON {ok, message}."""
+    """Test connectivity for given credentials. Returns JSON {ok, message}.
+    
+    Supports testing saved connections without re-entering the password:
+    if password is blank/masked, looks it up from saved connections by
+    matching instance+username (SN) or login_url+username (SF).
+    """
     data     = request.get_json(force=True, silent=True) or {}
     platform = data.get("platform", "sn")
+    conn_id  = data.get("conn_id", "").strip()  # optional: saved connection ID
+
+    def _resolve_password(platform: str, identifier: str, username: str, raw_pw: str, raw_st: str = "") -> tuple[str, str]:
+        """Return (password, security_token) — look up from saved connections if raw_pw is blank/masked."""
+        if raw_pw and raw_pw != "••••••••":
+            return raw_pw, raw_st
+        # Try to find saved connection
+        saved_conns = _load_connections()
+        # First try by conn_id if provided
+        if conn_id:
+            for c in saved_conns:
+                if c.get("id") == conn_id:
+                    return c.get("password", ""), c.get("security_token", "")
+        # Fall back: match by identifier + username
+        for c in saved_conns:
+            if c.get("platform") != platform:
+                continue
+            if platform == "sn" and c.get("instance", "").strip() == identifier and c.get("username", "").strip() == username:
+                return c.get("password", ""), ""
+            if platform == "sf" and c.get("login_url", "").strip() == identifier and c.get("username", "").strip() == username:
+                return c.get("password", ""), c.get("security_token", "")
+        return raw_pw, raw_st
+
     try:
         if platform == "sn":
             instance = data.get("instance", "").strip()
             username = data.get("username", "").strip()
             password = data.get("password", "")
+            password, _ = _resolve_password("sn", instance, username, password)
             if not (instance and username and password):
                 return jsonify({"ok": False, "message": "Instance URL, username and password are required."})
-            client = ServiceNowClient(instance=instance, username=username, password=password, role="test")
-            tables = client.get_tables()  # lightweight connectivity check
-            return jsonify({"ok": True, "message": f"Connected to {instance}. {len(tables)} tables visible."})
+            tracker = _get_tracker()
+            client = ServiceNowClient(instance=instance, username=username, password=password, role="test", tracker=tracker)
+            client.fetch_page("sys_db_object", limit=1, fields=["name"])
+            return jsonify({"ok": True, "message": f"Connected to {instance} successfully."})
         else:
-            from simple_salesforce import Salesforce, SalesforceAuthenticationFailed
-            login_url      = data.get("login_url", "https://login.salesforce.com")
+            login_url      = data.get("login_url", "https://login.salesforce.com").strip()
             username       = data.get("username", "").strip()
             password       = data.get("password", "")
             security_token = data.get("security_token", "")
+            password, security_token = _resolve_password("sf", login_url, username, password, security_token)
             if not (username and password):
-                return jsonify({"ok": False, "message": "Username and password are required."})
-            sf = Salesforce(username=username, password=password,
-                            security_token=security_token, instance_url=login_url)
-            return jsonify({"ok": True, "message": f"Connected as {sf.sf_type}."})
+                return jsonify({"ok": False, "message": "Username and password are required. Please save the connection first or enter credentials manually."})
+            tracker = _get_tracker()
+            sf_client = SalesforceClient(
+                login_url=login_url,
+                username=username,
+                password=password,
+                security_token=security_token,
+                role="test",
+                tracker=tracker,
+            )
+            objects = sf_client.get_objects()
+            return jsonify({"ok": True, "message": f"Connected to Salesforce as {username}. {len(objects)} objects visible."})
     except Exception as exc:
-        return jsonify({"ok": False, "message": str(exc)})
+        return jsonify({"ok": False, "message": _clean_error_message(exc)})
 
 
 @app.route("/connections/<conn_id>/edit", methods=["POST"])
@@ -1141,6 +1525,8 @@ def migrate_repeat(config_id):
     session["filter_conditions"] = cfg.get("filter_conditions", [])
     session["fetch_mode"] = cfg.get("fetch_mode", "auto")
     session["limit"] = cfg.get("limit")
+    session["orderby_field"] = cfg.get("orderby_field")
+    session["orderby_dir"] = cfg.get("orderby_dir", "ASC")
 
     # Load source connection credentials into session
     if source_is_sn:
@@ -1194,7 +1580,7 @@ def migrate_repeat(config_id):
     if cfg.get("field_mapping"):
         f_list = [{"name": k, "label": k} for k in cfg["field_mapping"].keys()]
         session["_source_fields"] = f_list
-        return redirect(url_for("migrate_confirm"))
+        return redirect(url_for("filters_page"))
     else:
         # Config was seeded from history without field_mapping — send user to the
         # fields step (table and connection are already in session).
@@ -1256,6 +1642,7 @@ def migrate():
         "fetch_mode": session.get("fetch_mode", "auto"),
         "filter_conditions": session.get("filter_conditions", []),
         "limit": session.get("limit"),
+        "coalesce_config": session.get("coalesce_config", {}),
     }
 
     # SN credentials
@@ -1450,6 +1837,7 @@ def _run_migration(ctx: dict):
             limit=ctx.get("limit"),
             rollback_store=rollback_store,
             rollback_job_id=rollback_job_id,
+            coalesce_config=ctx.get("coalesce_config"),
         )
 
         report = orchestrator.run()
@@ -1670,6 +2058,315 @@ def api_rollback_discard(job_id: str):
         return jsonify({"error": "not_found"}), 404
     store.delete_job(job_id)
     return jsonify({"status": "discarded"})
+
+
+# ═════════════════════════════════════════════════════════════════════
+# Data Ops (SOQL Queries & Bulk Actions)
+# ═════════════════════════════════════════════════════════════════════
+
+@app.route("/data-ops")
+def data_ops_page():
+    """Render the Data Ops manager page."""
+    return render_template("data_ops.html", connections=_load_connections())
+
+
+@app.route("/api/data-ops/query", methods=["POST"])
+def api_data_ops_query():
+    """Execute a query (SOQL for SF, table:query for SN) on a saved connection."""
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        conn_id = data.get("conn_id")
+        query = data.get("query", "").strip()
+        if not conn_id or not query:
+            return jsonify({"error": "Connection profile and query are required."}), 400
+
+        conns = _load_connections()
+        c = next((x for x in conns if x.get("id") == conn_id), None)
+        if not c:
+            return jsonify({"error": "Connection profile not found."}), 404
+
+        tracker = _get_tracker()
+        if c.get("platform") == "sf":
+            sf = SalesforceClient(
+                login_url=c["login_url"],
+                username=c["username"],
+                password=c["password"],
+                security_token=c.get("security_token", ""),
+                role="data_ops",
+                tracker=tracker
+            )
+            records = sf.query(query)
+            return jsonify({"ok": True, "records": records, "platform": "sf"})
+        else:
+            client = ServiceNowClient(
+                instance=c["instance"],
+                username=c["username"],
+                password=c["password"],
+                role="data_ops",
+                tracker=tracker
+            )
+            if ":" not in query:
+                return jsonify({"error": "ServiceNow query format must be: table_name:encoded_query (e.g. sys_user:active=true)"}), 400
+            table, sys_query = query.split(":", 1)
+            records = client.fetch_page(table.strip(), limit=200, extra_query=sys_query.strip())
+            return jsonify({"ok": True, "records": records, "platform": "sn"})
+    except Exception as exc:
+        logger.error("Data Ops query failed: %s", exc)
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/data-ops/export", methods=["POST"])
+def api_data_ops_export():
+    """Export records from a saved connection as CSV or JSON."""
+    try:
+        import io
+        import csv
+        data = request.get_json(force=True, silent=True) or {}
+        conn_id = data.get("conn_id")
+        table = data.get("table", "").strip()
+        fields_str = data.get("fields", "").strip()
+        fmt = data.get("format", "csv").lower()
+        sys_query = data.get("filter", "").strip()
+        limit_val = data.get("limit")
+
+        if not conn_id or not table:
+            return jsonify({"error": "Connection profile and table name are required."}), 400
+
+        conns = _load_connections()
+        c = next((x for x in conns if x.get("id") == conn_id), None)
+        if not c:
+            return jsonify({"error": "Connection profile not found."}), 404
+
+        tracker = _get_tracker()
+        records = []
+
+        try:
+            limit = int(limit_val) if limit_val else 1000
+        except ValueError:
+            limit = 1000
+
+        if c.get("platform") == "sf":
+            sf = SalesforceClient(
+                login_url=c["login_url"],
+                username=c["username"],
+                password=c["password"],
+                security_token=c.get("security_token", ""),
+                role="data_ops",
+                tracker=tracker
+            )
+            # If fields_str is empty, retrieve object fields
+            if fields_str:
+                field_list = [f.strip() for f in fields_str.split(",") if f.strip()]
+            else:
+                f_meta = sf.get_object_fields(table)
+                field_list = [f["name"] for f in f_meta if f.get("type") not in ("address", "location")]
+                if not field_list:
+                    field_list = ["Id", "Name"]
+
+            query = f"SELECT {', '.join(field_list)} FROM {table}"
+            if sys_query:
+                if not sys_query.upper().startswith("WHERE"):
+                    query += f" WHERE {sys_query}"
+                else:
+                    query += f" {sys_query}"
+            query += f" LIMIT {limit}"
+            records = sf.query(query)
+        else:
+            client = ServiceNowClient(
+                instance=c["instance"],
+                username=c["username"],
+                password=c["password"],
+                role="data_ops",
+                tracker=tracker
+            )
+            field_list = [f.strip() for f in fields_str.split(",") if f.strip()] if fields_str else None
+            records = []
+            last_sys_id = ""
+            remaining = limit
+            while remaining > 0:
+                fetch_size = min(remaining, 500)
+                batch = client.fetch_page(table, last_sys_id=last_sys_id, limit=fetch_size, fields=field_list, extra_query=sys_query)
+                if not batch:
+                    break
+                records.extend(batch)
+                remaining -= len(batch)
+                if len(batch) < fetch_size:
+                    break
+                last_sys_id = batch[-1].get("sys_id", "")
+
+        # Export formatting
+        if fmt == "json":
+            res_content = json.dumps(records, indent=2, ensure_ascii=False)
+            return Response(
+                res_content,
+                mimetype="application/json",
+                headers={"Content-disposition": f"attachment; filename=export_{table}_{int(datetime.now().timestamp())}.json"}
+            )
+        else:
+            if not records:
+                output = io.StringIO()
+                writer = csv.writer(output)
+                writer.writerow(["No records found"])
+                return Response(
+                    output.getvalue(),
+                    mimetype="text/csv",
+                    headers={"Content-disposition": f"attachment; filename=export_{table}_{int(datetime.now().timestamp())}.csv"}
+                )
+            
+            keys = set()
+            for r in records:
+                for k in r.keys():
+                    if k != "attributes":
+                        keys.add(k)
+            headers = sorted(list(keys))
+
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(headers)
+            for r in records:
+                row = []
+                for h in headers:
+                    val = r.get(h, "")
+                    if isinstance(val, dict):
+                        val = json.dumps(val)
+                    row.append(val)
+                writer.writerow(row)
+            
+            return Response(
+                output.getvalue(),
+                mimetype="text/csv",
+                headers={"Content-disposition": f"attachment; filename=export_{table}_{int(datetime.now().timestamp())}.csv"}
+            )
+
+    except Exception as exc:
+        logger.error("Data Ops export failed: %s", exc)
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/data-ops/insert", methods=["POST"])
+def api_data_ops_insert():
+    """Insert a list of records into a table/object on a saved connection."""
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        conn_id = data.get("conn_id")
+        table = data.get("table", "").strip()
+        records = data.get("records", [])
+        if not conn_id or not table or not records:
+            return jsonify({"error": "Connection, table/object, and records are required."}), 400
+
+        conns = _load_connections()
+        c = next((x for x in conns if x.get("id") == conn_id), None)
+        if not c:
+            return jsonify({"error": "Connection profile not found."}), 404
+
+        tracker = _get_tracker()
+        success_count = 0
+        failed_count = 0
+
+        if c.get("platform") == "sf":
+            sf = SalesforceClient(
+                login_url=c["login_url"],
+                username=c["username"],
+                password=c["password"],
+                security_token=c.get("security_token", ""),
+                role="data_ops",
+                tracker=tracker
+            )
+            from migration.sf_loader import SalesforceLoader
+            loader = SalesforceLoader(sf, table, {})
+            # Use inner helper
+            ok, fail, _, _ = loader._collections_insert(records)
+            return jsonify({"ok": True, "inserted": ok, "failed": fail})
+        else:
+            client = ServiceNowClient(
+                instance=c["instance"],
+                username=c["username"],
+                password=c["password"],
+                role="data_ops",
+                tracker=tracker
+            )
+            for rec in records:
+                try:
+                    cleaned = {k: v for k, v in rec.items() if k not in ("sys_id", "sys_created_on", "sys_created_by", "sys_updated_on", "sys_updated_by")}
+                    resp = client._request("POST", f"/api/now/table/{table}", json_body=cleaned)
+                    resp.raise_for_status()
+                    success_count += 1
+                except Exception as e:
+                    logger.error("ServiceNow single insert failed: %s", e)
+                    failed_count += 1
+            return jsonify({"ok": True, "inserted": success_count, "failed": failed_count})
+    except Exception as exc:
+        logger.error("Data Ops insert failed: %s", exc)
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/data-ops/delete", methods=["POST"])
+def api_data_ops_delete():
+    """Delete records by ID/sys_id from a table/object on a saved connection."""
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        conn_id = data.get("conn_id")
+        table = data.get("table", "").strip()
+        ids = data.get("ids", [])
+        if not conn_id or not table or not ids:
+            return jsonify({"error": "Connection, table/object, and list of IDs are required."}), 400
+
+        conns = _load_connections()
+        c = next((x for x in conns if x.get("id") == conn_id), None)
+        if not c:
+            return jsonify({"error": "Connection profile not found."}), 404
+
+        tracker = _get_tracker()
+        success_count = 0
+        failed_count = 0
+
+        if c.get("platform") == "sf":
+            sf = SalesforceClient(
+                login_url=c["login_url"],
+                username=c["username"],
+                password=c["password"],
+                security_token=c.get("security_token", ""),
+                role="data_ops",
+                tracker=tracker
+            )
+            for i in range(0, len(ids), 200):
+                chunk = ids[i:i+200]
+                try:
+                    resp = sf._request(
+                        "DELETE",
+                        "/services/data/v57.0/composite/sobjects",
+                        params={"ids": ",".join(chunk)}
+                    )
+                    resp.raise_for_status()
+                    for item in resp.json():
+                        if item.get("success"):
+                            success_count += 1
+                        else:
+                            failed_count += 1
+                except Exception as e:
+                    logger.error("Salesforce chunk delete failed: %s", e)
+                    failed_count += len(chunk)
+            return jsonify({"ok": True, "deleted": success_count, "failed": failed_count})
+        else:
+            client = ServiceNowClient(
+                instance=c["instance"],
+                username=c["username"],
+                password=c["password"],
+                role="data_ops",
+                tracker=tracker
+            )
+            for sys_id in ids:
+                try:
+                    resp = client._request("DELETE", f"/api/now/table/{table}/{sys_id}")
+                    resp.raise_for_status()
+                    success_count += 1
+                except Exception as e:
+                    logger.error("ServiceNow delete failed: %s", e)
+                    failed_count += 1
+            return jsonify({"ok": True, "deleted": success_count, "failed": failed_count})
+    except Exception as exc:
+        logger.error("Data Ops delete failed: %s", exc)
+        return jsonify({"error": str(exc)}), 500
 
 
 # ─────────────────────────────────────────────────────────────────────

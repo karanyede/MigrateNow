@@ -85,119 +85,197 @@
     <div class="stat-summary-card stat-summary-card--amber">
         <div class="stat-summary-card__label">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"/>
             </svg>
-            Last Migration
+            Saved Connections
         </div>
-        <div class="stat-summary-card__value" style="font-size:1.1rem; -webkit-text-fill-color: var(--amber); color:var(--amber); background:none;">
-            {{ last_ts }}
+        <div class="stat-summary-card__value" data-count="{{ connections_count | default(0) }}">
+            {{ connections_count | default(0) }}
         </div>
-        <div class="stat-summary-card__sub">Most recent run</div>
+        <div class="stat-summary-card__sub">Active endpoints</div>
     </div>
 
 </div>
 
+{# ── Compute flow counts and volumes ──────────────────────── #}
+{% set counts = namespace(sn_sn=0, sn_sf=0, sf_sf=0, sf_sn=0) %}
+{% set vols   = namespace(sn_sn=0, sn_sf=0, sf_sf=0, sf_sn=0) %}
+{% for h in history %}
+    {% set mtype = h.get('migration_type', 'sn_sn') %}
+    {% set recs  = (h.inserts | default(0)) + (h.updates | default(0)) %}
+    {% if mtype == 'sn_sn' %}
+        {% set counts.sn_sn = counts.sn_sn + 1 %}
+        {% set vols.sn_sn   = vols.sn_sn   + recs %}
+    {% elif mtype == 'sn_sf' %}
+        {% set counts.sn_sf = counts.sn_sf + 1 %}
+        {% set vols.sn_sf   = vols.sn_sf   + recs %}
+    {% elif mtype == 'sf_sf' %}
+        {% set counts.sf_sf = counts.sf_sf + 1 %}
+        {% set vols.sf_sf   = vols.sf_sf   + recs %}
+    {% elif mtype == 'sf_sn' %}
+        {% set counts.sf_sn = counts.sf_sn + 1 %}
+        {% set vols.sf_sn   = vols.sf_sn   + recs %}
+    {% endif %}
+{% endfor %}
+
 <!-- ── Charts and Visualizations Grid ── -->
 <div class="dashboard-grid">
-    
-    <!-- Status Distribution Donut Chart -->
+
+    <!-- ── Left: Status Distribution Donut Chart ── -->
     <div class="card" style="margin-bottom:0;">
         <div class="card__header">
             <div class="card__header-left">
                 <div class="card__title">Status Distribution</div>
-                <div class="card__subtitle">Success rates and overall pipeline health</div>
+                <div class="card__subtitle">Success · Partial · Failed breakdown</div>
             </div>
         </div>
-        <div class="chart-container">
-            {% if total_migrations > 0 %}
-                {% set success_pct = (success_count.val / total_migrations * 100) | round | int %}
-                {% set partial_pct = (partial_count.val / total_migrations * 100) | round | int %}
-                {% set failed_pct = 100 - success_pct - partial_pct %}
-                
-                <div class="donut-chart" style="--success-pct: {{ success_pct }}%; --partial-pct: {{ success_pct + partial_pct }}%;">
-                    <div class="donut-chart__hole">
-                        <span class="donut-chart__hole-value">{{ success_rate }}%</span>
-                        <span class="donut-chart__hole-label">Success</span>
+        <div style="display:flex; align-items:center; justify-content:center; gap:2rem; padding:1.5rem 1.25rem 1.75rem;">
+
+            {# Donut via SVG stroke-dasharray #}
+            {% set total_for_pie = total_migrations if total_migrations > 0 else 1 %}
+            {% set s_pct  = (success_count.val / total_for_pie * 100) | round(1) %}
+            {% set p_pct  = (partial_count.val / total_for_pie * 100) | round(1) %}
+            {% set f_pct  = (failed_count.val  / total_for_pie * 100) | round(1) %}
+
+            {# circumference = 2π×r ; r=52 → C≈326.73 #}
+            {% set C = 326.73 %}
+            {% set s_dash  = (s_pct  / 100 * C) | round(2) %}
+            {% set p_dash  = (p_pct  / 100 * C) | round(2) %}
+            {% set f_dash  = (f_pct  / 100 * C) | round(2) %}
+            {# offsets: success starts at top (−C/4 = −81.68) #}
+            {% set s_off   = -81.68 %}
+            {% set p_off   = (s_off - s_dash) | round(2) %}
+            {% set f_off   = (p_off - p_dash) | round(2) %}
+
+            <svg width="160" height="160" viewBox="0 0 160 160" style="flex-shrink:0; overflow:visible;">
+                <!-- Track -->
+                <circle cx="80" cy="80" r="52" fill="none" stroke="var(--bg-lighter)" stroke-width="18"/>
+                {% if total_migrations == 0 %}
+                    <circle cx="80" cy="80" r="52" fill="none" stroke="var(--border-subtle)" stroke-width="18"
+                        stroke-dasharray="{{ C }} {{ C }}" stroke-dashoffset="{{ s_off }}" stroke-linecap="round"/>
+                {% else %}
+                    <!-- Success arc (emerald) -->
+                    {% if s_dash > 0 %}
+                    <circle cx="80" cy="80" r="52" fill="none" stroke="var(--emerald)" stroke-width="18"
+                        stroke-dasharray="{{ s_dash }} {{ C }}" stroke-dashoffset="{{ s_off }}"
+                        style="transition:stroke-dasharray 1s ease;"/>
+                    {% endif %}
+                    <!-- Partial arc (amber) -->
+                    {% if p_dash > 0 %}
+                    <circle cx="80" cy="80" r="52" fill="none" stroke="var(--amber)" stroke-width="18"
+                        stroke-dasharray="{{ p_dash }} {{ C }}" stroke-dashoffset="{{ p_off }}"
+                        style="transition:stroke-dasharray 1s ease;"/>
+                    {% endif %}
+                    <!-- Failed arc (rose) -->
+                    {% if f_dash > 0 %}
+                    <circle cx="80" cy="80" r="52" fill="none" stroke="var(--rose)" stroke-width="18"
+                        stroke-dasharray="{{ f_dash }} {{ C }}" stroke-dashoffset="{{ f_off }}"
+                        style="transition:stroke-dasharray 1s ease;"/>
+                    {% endif %}
+                {% endif %}
+                <!-- Centre label -->
+                <text x="80" y="75" text-anchor="middle" font-size="22" font-weight="700"
+                      fill="var(--text-normal)" font-family="'Inter',sans-serif">{{ total_migrations }}</text>
+                <text x="80" y="93" text-anchor="middle" font-size="10"
+                      fill="var(--text-muted)" font-family="'Inter',sans-serif">Total</text>
+            </svg>
+
+            <!-- Legend -->
+            <div style="display:flex; flex-direction:column; gap:0.85rem;">
+                <div style="display:flex; align-items:center; gap:0.6rem;">
+                    <span style="width:10px;height:10px;border-radius:50%;background:var(--emerald);flex-shrink:0;"></span>
+                    <div>
+                        <div style="font-size:0.78rem;color:var(--text-normal);font-weight:600;">Success</div>
+                        <div style="font-size:0.72rem;color:var(--text-muted);">{{ success_count.val }} runs · {{ s_pct }}%</div>
                     </div>
                 </div>
-                
-                <div class="chart-legend">
-                    <div class="chart-legend__item">
-                        <div class="chart-legend__dot" style="background:var(--emerald);"></div>
-                        <span>Success: {{ success_count.val }} ({{ success_pct }}%)</span>
-                    </div>
-                    <div class="chart-legend__item">
-                        <div class="chart-legend__dot" style="background:var(--amber);"></div>
-                        <span>Partial: {{ partial_count.val }} ({{ partial_pct }}%)</span>
-                    </div>
-                    <div class="chart-legend__item">
-                        <div class="chart-legend__dot" style="background:var(--rose);"></div>
-                        <span>Failed: {{ failed_count.val }} ({{ failed_pct }}%)</span>
+                <div style="display:flex; align-items:center; gap:0.6rem;">
+                    <span style="width:10px;height:10px;border-radius:50%;background:var(--amber);flex-shrink:0;"></span>
+                    <div>
+                        <div style="font-size:0.78rem;color:var(--text-normal);font-weight:600;">Partial</div>
+                        <div style="font-size:0.72rem;color:var(--text-muted);">{{ partial_count.val }} runs · {{ p_pct }}%</div>
                     </div>
                 </div>
-            {% else %}
-                <div style="font-size:0.8rem; color:var(--text-muted); padding:3rem 0; text-align:center;">
-                    No migration history available to map status distributions.
+                <div style="display:flex; align-items:center; gap:0.6rem;">
+                    <span style="width:10px;height:10px;border-radius:50%;background:var(--rose);flex-shrink:0;"></span>
+                    <div>
+                        <div style="font-size:0.78rem;color:var(--text-normal);font-weight:600;">Failed</div>
+                        <div style="font-size:0.72rem;color:var(--text-muted);">{{ failed_count.val }} runs · {{ f_pct }}%</div>
+                    </div>
                 </div>
-            {% endif %}
+            </div>
+
         </div>
     </div>
 
-    <!-- Records Moved Bar Chart -->
+    <!-- ── Right: Flow Breakdown — Grouped Bar Chart ── -->
     <div class="card" style="margin-bottom:0;">
         <div class="card__header">
             <div class="card__header-left">
-                <div class="card__title">Volume Timelines</div>
-                <div class="card__subtitle">Data volumes transferred over the last 5 runs</div>
+                <div class="card__title">Flow Breakdown</div>
+                <div class="card__subtitle">Migrations count &amp; records moved by flow type</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:1rem; flex-shrink:0;">
+                <div style="display:flex; align-items:center; gap:0.35rem; font-size:0.72rem; color:var(--text-muted);">
+                    <span style="width:10px;height:10px;border-radius:2px;background:var(--cyan);display:inline-block;"></span> Runs
+                </div>
+                <div style="display:flex; align-items:center; gap:0.35rem; font-size:0.72rem; color:var(--text-muted);">
+                    <span style="width:10px;height:10px;border-radius:2px;background:var(--amber);display:inline-block;"></span> Records
+                </div>
             </div>
         </div>
-        <div class="bar-chart-outer">
-            {% if total_migrations > 0 %}
-                {# Find max records for relative scale — minimum 1 to avoid division-by-zero #}
-                {% set max_recs = namespace(val=1) %}
-                {% for h in history[:5] %}
-                    {% set recs = (h.inserts | default(0)) + (h.updates | default(0)) %}
-                    {% if recs > max_recs.val %}{% set max_recs.val = recs %}{% endif %}
-                {% endfor %}
 
-                <div class="bar-chart-container">
-                    {% set bh = namespace(val=0) %}
-                    {% for h in history[:5]|reverse %}
-                        {% set current_recs = (h.inserts | default(0)) + (h.updates | default(0)) %}
-                        {% set bh.val = [(current_recs / max_recs.val * 100) | round | int, 4] | max %}
+        {# Prepare data for chart #}
+        {% set flow_labels = ['SN→SN', 'SN→SF', 'SF→SF', 'SF→SN'] %}
+        {% set flow_counts = [counts.sn_sn, counts.sn_sf, counts.sf_sf, counts.sf_sn] %}
+        {% set flow_vols   = [vols.sn_sn,   vols.sn_sf,   vols.sf_sf,   vols.sf_sn  ] %}
+        {% set max_c = ([counts.sn_sn, counts.sn_sf, counts.sf_sf, counts.sf_sn] | max) if total_migrations > 0 else 1 %}
+        {% set max_v = ([vols.sn_sn,   vols.sn_sf,   vols.sf_sf,   vols.sf_sn  ] | max) %}
+        {% set max_v = max_v if max_v > 0 else 1 %}
 
-                        <div class="bar-column">
-                            <div class="bar-column__bar bar-animate bar-column__bar--{{ h.status }}"
-                                 style="--bar-height: {{ bh.val }}%;
-                                        --bar-delay: {{ loop.index0 * 0.08 }}s;">
-                                <div class="bar-column__tooltip">
-                                    {{ current_recs | numberFormat }} records<br>
-                                    <span style="font-size:0.6rem;opacity:0.8;">{{ h.source_table or '' }} → {{ h.target_table or '' }}</span>
-                                </div>
+        <div style="padding: 1.25rem 1.25rem 1.5rem; display:flex; flex-direction:column; gap:0; height:calc(100% - 60px); box-sizing:border-box;">
+            <!-- Chart area -->
+            <div style="display:flex; flex:1; align-items:flex-end; gap:1.5rem; min-height:140px; padding-bottom:0.75rem; border-bottom:1px solid var(--border-hairline);">
+                {% for i in range(4) %}
+                    {% if i == 0 %}{% set lbl = 'SN→SN' %}{% set cnt = counts.sn_sn %}{% set vol = vols.sn_sn %}
+                    {% elif i == 1 %}{% set lbl = 'SN→SF' %}{% set cnt = counts.sn_sf %}{% set vol = vols.sn_sf %}
+                    {% elif i == 2 %}{% set lbl = 'SF→SF' %}{% set cnt = counts.sf_sf %}{% set vol = vols.sf_sf %}
+                    {% else %}{% set lbl = 'SF→SN' %}{% set cnt = counts.sf_sn %}{% set vol = vols.sf_sn %}
+                    {% endif %}
+                    {% set cnt_h = ((cnt / max_c) * 130) | round | int %}
+                    {% set vol_h = ((vol / max_v) * 130) | round | int %}
+                    <div style="display:flex; flex-direction:column; align-items:center; gap:0.3rem; flex:1;">
+                        <!-- Values -->
+                        <div style="display:flex; gap:0.3rem; align-items:flex-end; height:130px;">
+                            <!-- Count bar -->
+                            <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+                                <span style="font-size:0.65rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace;">{{ cnt }}</span>
+                                <div style="width:22px; height:{{ cnt_h if cnt_h > 0 else 2 }}px; background:var(--cyan); border-radius:3px 3px 0 0; transition: height 0.8s ease; min-height:2px;"></div>
                             </div>
-                            <div class="bar-column__label">{{ (h.timestamp or '')[5:10] }}</div>
+                            <!-- Volume bar -->
+                            <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+                                <span style="font-size:0.65rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace;">{{ vol }}</span>
+                                <div style="width:22px; height:{{ vol_h if vol_h > 0 else 2 }}px; background:var(--amber); border-radius:3px 3px 0 0; transition: height 0.8s ease; min-height:2px;"></div>
+                            </div>
                         </div>
-                    {% endfor %}
-                </div>
-                <div style="font-size:0.7rem;color:var(--text-muted);display:flex;justify-content:space-between;padding:0 0.5rem;margin-top:0.25rem;">
-                    <span>← Oldest</span>
-                    <span style="font-family:'JetBrains Mono',monospace;">Max: {{ max_recs.val | numberFormat }} records</span>
-                    <span>Latest →</span>
-                </div>
-            {% else %}
-                <div style="font-size:0.8rem;color:var(--text-muted);padding:3.5rem 0;text-align:center;display:flex;flex-direction:column;align-items:center;gap:0.5rem;">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:32px;height:32px;opacity:0.3;">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z"/>
-                    </svg>
-                    No migration data yet. Run your first migration to see volumes.
-                </div>
-            {% endif %}
+                        <!-- X-axis label -->
+                        <span style="font-size:0.7rem; color:var(--text-secondary); font-weight:600; white-space:nowrap;">{{ lbl }}</span>
+                    </div>
+                {% endfor %}
+            </div>
+            <!-- Y-axis note -->
+            <div style="display:flex; justify-content:space-between; padding-top:0.5rem;">
+                <span style="font-size:0.68rem; color:var(--text-muted);">0</span>
+                <span style="font-size:0.68rem; color:var(--text-muted); font-style:italic;">counts normalized per axis</span>
+                <span style="font-size:0.68rem; color:var(--text-muted);">max</span>
+            </div>
         </div>
-    </div>{# end Volume Timelines card #}
+    </div>
 
 </div>{# end .dashboard-grid #}
 
 <!-- ── Recent Migrations ───────────────────────────────────── -->
+
 <div class="card" style="margin-bottom:0;">
     <div class="card__header">
         <div class="card__header-left">

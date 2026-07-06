@@ -205,6 +205,7 @@ class MigrationOrchestrator:
         limit: int | None = None,
         rollback_store: RollbackStore | None = None,
         rollback_job_id: str | None = None,
+        coalesce_config: dict | None = None,
     ) -> None:
         self.src = source_client
         self.tgt = target_client
@@ -221,6 +222,7 @@ class MigrationOrchestrator:
         self.limit = limit
         self.rollback_store = rollback_store
         self.rollback_job_id = rollback_job_id
+        self.coalesce_config = coalesce_config or {}
         # Build {field_name: ref_table} for reference fields in the mapping
         self._ref_fields: dict[str, str] = {}
         if source_fields_meta and self._is_source_sn:
@@ -750,19 +752,17 @@ class MigrationOrchestrator:
 
         target_fields = list(set(self.mapping.values()))
 
+        # Determine target primary key and validation
+        target_valid_fields = None
+        external_id_available = False
+        external_id_mapped = False
+
         if self._is_target_sf:
-            # SF target — need Id as primary key
             if "Id" not in target_fields:
                 target_fields.append("Id")
-            # Also include external ID field if using dedup
             if self.sf_external_id_field and self.sf_external_id_field not in target_fields:
                 target_fields.append(self.sf_external_id_field)
 
-            target_valid_fields: set[str] | None = None
-            external_id_available = False
-            external_id_mapped = False
-
-            # Validate fields against the target object's describe
             try:
                 target_describe = self.tgt.get_object_fields(self.tgt_table)
                 target_valid_fields = {f["name"] for f in target_describe}
@@ -790,66 +790,69 @@ class MigrationOrchestrator:
             except Exception as exc:
                 logger.warning("Could not validate target fields: %s", exc)
 
-            # Build target_map keyed by external ID (preferred), Name fallback, or Id.
-            # We only use external ID coalescing when the field exists on target and
-            # is actually mapped from source data.
-            if self.sf_external_id_field and external_id_available and external_id_mapped:
-                coalesce_target_field = self.sf_external_id_field
-                use_coalesce = True
-                src_field_for_coalesce = next(
-                    (s for s, t in self.mapping.items() if t == coalesce_target_field),
-                    "",
-                )
-                key_values = {
-                    str(r.get(src_field_for_coalesce, "")).strip()
-                    for r in source_records
-                    if str(r.get(src_field_for_coalesce, "")).strip()
-                }
-                target_records_list = self._fetch_sf_target_by_key_values(
-                    object_name=self.tgt_table,
-                    fields=target_fields,
-                    key_field=coalesce_target_field,
-                    key_values=key_values,
-                )
-                logger.info(
-                    "Target fetch strategy: selective by %s (%d source keys).",
-                    coalesce_target_field,
-                    len(key_values),
-                )
-            elif "Name" in self.mapping.values() and (
-                (target_valid_fields is None) or ("Name" in target_valid_fields)
-            ):
-                coalesce_target_field = "Name"
-                use_coalesce = True
-                src_field_for_name = next(
-                    (s for s, t in self.mapping.items() if t == "Name"),
-                    "",
-                )
-                name_values = {
-                    str(r.get(src_field_for_name, "")).strip()
-                    for r in source_records
-                    if str(r.get(src_field_for_name, "")).strip()
-                }
-                target_records_list = self._fetch_sf_target_by_key_values(
-                    object_name=self.tgt_table,
-                    fields=target_fields,
-                    key_field="Name",
-                    key_values=name_values,
-                )
-                logger.warning(
-                    "External ID '%s' is unavailable or unmapped. "
-                    "Using Name-based selective matching (%d source names).",
-                    self.sf_external_id_field,
-                    len(name_values),
-                )
+        # Resolve coalesce configuration
+        coalesce_config = self.coalesce_config or {}
+        if not coalesce_config or not coalesce_config.get("enabled"):
+            # Fall back to auto-detected default single-field coalesce logic
+            if self._is_target_sf:
+                if self.sf_external_id_field and external_id_available and external_id_mapped:
+                    coalesce_config = {"enabled": True, "logic": "AND", "fields": [self.sf_external_id_field]}
+                elif "Name" in self.mapping.values() and ((target_valid_fields is None) or ("Name" in target_valid_fields)):
+                    coalesce_config = {"enabled": True, "logic": "AND", "fields": ["Name"]}
+                else:
+                    coalesce_config = {"enabled": False, "logic": "AND", "fields": []}
             else:
-                coalesce_target_field = "Id"
-                use_coalesce = False
+                src_pk = "Id" if self._is_source_sf else "sys_id"
+                coalesce_target_field = self.mapping.get(src_pk, src_pk)
+                if coalesce_target_field != src_pk:
+                    coalesce_config = {"enabled": True, "logic": "AND", "fields": [coalesce_target_field]}
+                else:
+                    coalesce_config = {"enabled": False, "logic": "AND", "fields": []}
+
+        # Make sure all coalesce fields are in target_fields list
+        if coalesce_config.get("enabled"):
+            for f in coalesce_config.get("fields", []):
+                if f not in target_fields:
+                    if self._is_target_sf:
+                        if target_valid_fields is None or f in target_valid_fields:
+                            target_fields.append(f)
+                    else:
+                        target_fields.append(f)
+
+        # Perform target records fetch
+        target_records_list = []
+        if self._is_target_sf:
+            # Check if we can fetch selectively (only if exactly 1 coalesce field)
+            is_selective = False
+            if coalesce_config.get("enabled") and len(coalesce_config.get("fields", [])) == 1:
+                key_field = coalesce_config["fields"][0]
+                reverse_mapping = {tgt: src for src, tgt in self.mapping.items()}
+                src_field = reverse_mapping.get(key_field)
+                if src_field:
+                    key_values = {
+                        str(r.get(src_field, "")).strip()
+                        for r in source_records
+                        if str(r.get(src_field, "")).strip()
+                    }
+                    target_records_list = self._fetch_sf_target_by_key_values(
+                        object_name=self.tgt_table,
+                        fields=target_fields,
+                        key_field=key_field,
+                        key_values=key_values,
+                    )
+                    is_selective = True
+                    logger.info(
+                        "Target fetch strategy: selective by %s (%d source keys).",
+                        key_field,
+                        len(key_values),
+                    )
+
+            if not is_selective:
                 field_list = ",".join(target_fields)
                 soql = f"SELECT {field_list} FROM {self.tgt_table} ORDER BY Id"
                 target_records_list = self.tgt.query(soql)
-                logger.warning(
-                    "No selective SF match key available. Falling back to full target scan."
+                logger.info(
+                    "Target fetch strategy: full target scan."
                 )
         else:
             if "sys_id" not in target_fields:
@@ -870,45 +873,12 @@ class MigrationOrchestrator:
                 )
                 target_records_list = target_fetcher.fetch_all()
 
-            # Determine source primary key
-            src_pk = "Id" if self._is_source_sf else "sys_id"
-            coalesce_target_field = self.mapping.get(src_pk, src_pk)
-            use_coalesce = coalesce_target_field != src_pk
-
-        target_map: dict[str, dict] = {}
-        _dup_count = 0
-
-        for rec in target_records_list:
-            if use_coalesce:
-                val = rec.get(coalesce_target_field, "")
-                if val:
-                    if val in target_map:
-                        _dup_count += 1
-                    target_map[val] = rec
-            else:
-                # Use sys_id for SN, Id for SF
-                key = rec.get("sys_id", "") or rec.get("Id", "")
-                if key:
-                    target_map[key] = rec
-
-        if _dup_count > 0:
-            logger.warning(
-                "⚠ Target has %d records with duplicate '%s' values. "
-                "Only the last occurrence of each will be used for diff.",
-                _dup_count, coalesce_target_field,
-            )
-
-        # Log coalesce map coverage to detect data integrity issues.
-        if use_coalesce and target_records_list:
-            mapped_pct = (len(target_map) / len(target_records_list)) * 100
-            logger.info(
-                "Coalesce map: %d of %d target records have '%s' "
-                "(%.1f%% coverage).",
-                len(target_map),
-                len(target_records_list),
-                coalesce_target_field,
-                mapped_pct,
-            )
+        # Build TargetMatcher for O(1) matching
+        target_matcher = TargetMatcher(
+            target_records=target_records_list,
+            field_mapping=self.mapping,
+            coalesce_config=coalesce_config,
+        )
 
         self._emit(
             "fetch_target",
@@ -925,16 +895,15 @@ class MigrationOrchestrator:
 
         differ = DiffEngine(
             field_mapping=self.mapping,
-            target_map=target_map,
-            coalesce_mode=use_coalesce,
+            target_matcher=target_matcher,
+            coalesce_mode=coalesce_config.get("enabled", False),
         )
         diff = differ.compute(source_records)
         report.skipped = diff.skipped
         report.timing.diff = time.perf_counter() - t0
 
         # Sanity check: if target isn't empty but we're about to insert
-        # a large fraction of source records, something is likely wrong
-        # with the data (e.g. corrupted fetch).
+        # a large fraction of source records, warning
         if (target_records_list
                 and diff.inserts
                 and len(diff.inserts) > len(source_records) * 0.5):
@@ -953,24 +922,14 @@ class MigrationOrchestrator:
         )
 
         # ── 3b. Capture update pre-states for rollback (zero API cost) ──
-        # target_map is already in memory — we just read from it.
         if self.rollback_store and self.rollback_job_id and diff.updates:
             pre_states = []
             for rec in diff.updates:
-                # Determine the key used to look up in target_map
-                if self._is_target_sf:
-                    coalesce_val = rec.get(self.sf_external_id_field or "Id", "")
-                    tgt_rec = target_map.get(coalesce_val, {})
-                    tgt_key = tgt_rec.get("Id", coalesce_val)
-                else:
-                    sid = rec.get("sys_id", "")
-                    tgt_rec = target_map.get(
-                        rec.get("_target_sys_id", sid), {}
-                    ) or target_map.get(sid, {})
-                    tgt_key = tgt_rec.get("sys_id", rec.get("_target_sys_id", sid))
-
-                if tgt_key and tgt_rec:
-                    pre_states.append({"target_key": tgt_key, "pre_state": tgt_rec})
+                tgt_rec = target_matcher.match(rec)
+                if tgt_rec:
+                    tgt_key = tgt_rec.get("Id", "") or tgt_rec.get("sys_id", "")
+                    if tgt_key:
+                        pre_states.append({"target_key": tgt_key, "pre_state": tgt_rec})
 
             if pre_states:
                 try:

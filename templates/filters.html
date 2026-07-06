@@ -1,0 +1,648 @@
+{% extends "base.html" %}
+{% set current_step = 4 %}
+
+{% block title %}Filters & Preview{% endblock %}
+{% block page_title %}Filters & Preview{% endblock %}
+{% block breadcrumb %}
+    <span>New Migration</span>
+    <span class="page-header__breadcrumb-sep">›</span>
+    <span>Step 4: Filters & Preview</span>
+{% endblock %}
+
+{% block header_actions %}
+<a href="{{ url_for('fields') }}" class="btn btn-secondary btn-sm">← Back to Fields</a>
+{% endblock %}
+
+{% block content %}
+
+{# ── Wizard Flow Bar ─────────────────────────────────────── #}
+<div class="wizard-flow-bar">
+    <div class="wizard-flow-step wizard-flow-step--done">
+        <div class="wizard-flow-step__num"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                style="width:12px;height:12px">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+            </svg></div>
+        <span class="wizard-flow-step__label">Connect</span>
+    </div>
+    <div class="wizard-flow-connector wizard-flow-connector--done"></div>
+    <div class="wizard-flow-step wizard-flow-step--done">
+        <div class="wizard-flow-step__num"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                style="width:12px;height:12px">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+            </svg></div>
+        <span class="wizard-flow-step__label">Select Tables</span>
+    </div>
+    <div class="wizard-flow-connector wizard-flow-connector--done"></div>
+    <div class="wizard-flow-step wizard-flow-step--done">
+        <div class="wizard-flow-step__num"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                style="width:12px;height:12px">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+            </svg></div>
+        <span class="wizard-flow-step__label">Map Fields</span>
+    </div>
+    <div class="wizard-flow-connector wizard-flow-connector--done"></div>
+    <div class="wizard-flow-step wizard-flow-step--active">
+        <div class="wizard-flow-step__num">4</div>
+        <span class="wizard-flow-step__label">Filters & Preview</span>
+    </div>
+    <div class="wizard-flow-connector"></div>
+    <div class="wizard-flow-step">
+        <div class="wizard-flow-step__num">5</div>
+        <span class="wizard-flow-step__label">Migrate</span>
+    </div>
+</div>
+
+<form method="POST" action="{{ url_for('filters_page') }}" id="filtersForm">
+
+    <input type="hidden" name="filter_conditions" id="filterConditionsInput" value="[]">
+
+    <!-- ── Unified Filter & Preview Panel ── -->
+    <div class="card" style="padding:0; overflow:hidden;">
+
+        <!-- Panel Header -->
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:0.9rem 1.1rem; border-bottom:1px solid var(--border-hairline);">
+            <div style="display:flex; align-items:center; gap:0.75rem;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                    style="width:15px;height:15px;color:var(--amber); flex-shrink:0;">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
+                </svg>
+                <span style="font-weight:600; font-size:0.88rem; color:var(--text-normal);">Filters &amp; Preview</span>
+                <span id="filterSummaryBadge" style="font-size:0.7rem; color:var(--text-muted); background:var(--bg-lighter); padding:0.15rem 0.5rem; border-radius:10px; margin-left:0.25rem;">All records</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+                <button type="button" id="btnClearFilters" class="btn btn-secondary btn-sm" style="height:28px; font-size:0.75rem; padding:0 0.7rem;">Clear</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="btnPreviewData" onclick="previewData()" style="height:28px; font-size:0.75rem; padding:0 0.7rem;">
+                    ⚡ Preview
+                </button>
+            </div>
+        </div>
+
+        <!-- Section 1: Filter Conditions (compact builder) -->
+        <div id="filterBuilder" style="padding:0;"></div>
+
+        <!-- Section 2: Options Row (Limit + Order By inline) -->
+        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:0.75rem; padding:0.7rem 1.1rem; border-top:1px solid var(--border-hairline); background:var(--bg-panel);">
+            <span style="font-size:0.72rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; flex-shrink:0;">Options</span>
+            <div style="display:flex; align-items:center; gap:0.4rem; flex-shrink:0;">
+                <label style="font-size:0.75rem; color:var(--text-secondary); white-space:nowrap;">Limit</label>
+                <input type="number" id="filterLimit" name="limit" class="form-input"
+                    style="background:var(--surface-3); width:90px; height:28px; font-size:0.8rem; padding:0 0.5rem;"
+                    min="1" placeholder="No limit" value="{{ limit or '' }}">
+            </div>
+            <div style="width:1px; height:20px; background:var(--border-hairline); flex-shrink:0;"></div>
+            <div style="display:flex; align-items:center; gap:0.4rem; flex-shrink:0;">
+                <label style="font-size:0.75rem; color:var(--text-secondary); white-space:nowrap;">Order By</label>
+                <select name="orderby_field" class="form-input" style="background:var(--surface-3); height:28px; font-size:0.8rem; padding:0 0.4rem; width:auto; max-width:180px;">
+                    <option value="">-- No sorting --</option>
+                    {% for f in source_fields %}
+                    <option value="{{ f.name }}" {% if orderby_field == f.name %}selected{% endif %}>{{ f.label or f.name }}</option>
+                    {% endfor %}
+                </select>
+                <select name="orderby_dir" class="form-input" style="background:var(--surface-3); height:28px; font-size:0.8rem; padding:0 0.4rem; width:70px;">
+                    <option value="ASC" {% if orderby_dir == 'ASC' %}selected{% endif %}>ASC</option>
+                    <option value="DESC" {% if orderby_dir == 'DESC' %}selected{% endif %}>DESC</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Section 3: Preview Results (inline, below options) -->
+        <div style="border-top:1px solid var(--border-hairline);">
+            <!-- Preview count bar -->
+            <div id="previewStatus" style="display:none; padding:0.45rem 1.1rem; background:rgba(6,182,212,0.05); border-bottom:1px solid var(--border-hairline); font-size:0.78rem;">
+                <span style="color:var(--text-muted);">Matching records:</span>
+                <strong id="previewTotalCount" style="color:var(--cyan); margin-left:0.3rem;">0</strong>
+                <span style="color:var(--text-muted); margin-left:0.5rem; font-size:0.7rem;">(showing first 10)</span>
+            </div>
+            <!-- Preview table -->
+            <div style="overflow-x:auto; max-height:320px; display:none;" id="previewTableContainer">
+                <table class="mapping-table" id="tblPreview" style="min-width:100%; border-radius:0; border:none;">
+                    <thead>
+                        <tr id="tblPreviewHeader"></tr>
+                    </thead>
+                    <tbody id="tblPreviewBody"></tbody>
+                </table>
+            </div>
+            <!-- Empty / idle state -->
+            <div id="previewEmptyState" style="text-align:center; padding:1.5rem; color:var(--text-muted); font-size:0.8rem; font-style:italic;">
+                Click <strong style="font-style:normal; color:var(--text-secondary);">⚡ Preview</strong> to run a test query with the current filters.
+            </div>
+        </div>
+
+    </div>{# end unified panel #}
+
+    <div class="btn-row">
+        <a href="{{ url_for('fields') }}" class="btn btn-secondary">← Back</a>
+        <button type="submit" class="btn btn-success btn-lg">
+            Save &amp; Continue to Confirm →
+        </button>
+    </div>
+
+</form>
+
+
+{% endblock %}
+
+{% block scripts %}
+<script id="source-fields-data" type="application/json">{{ source_fields | tojson | safe }}</script>
+<script>
+    (function () {
+        const builder = document.getElementById('filterBuilder');
+        const hiddenInput = document.getElementById('filterConditionsInput');
+        const badge = document.getElementById('filterSummaryBadge');
+        const sourceFields = JSON.parse(document.getElementById('source-fields-data').textContent);
+
+        let groups = [];
+        try {
+            // Seed from server
+            groups = {{ filter_conditions | tojson | safe }};
+        } catch (e) {
+            groups = [];
+        }
+        if (!groups || groups.length === 0) {
+            groups = [[{ field: '', op: '', value: '' }]];
+        }
+
+        const migrationType = '{{ migration_type }}';
+        const isSourceSF = ['sf_sf', 'sf_sn'].includes(migrationType);
+
+        const operators = isSourceSF
+            ? [
+                { val: '=', label: 'is' },
+                { val: '!=', label: 'is not' },
+                { val: '<', label: 'less than' },
+                { val: '>', label: 'greater than' },
+                { val: '<=', label: 'less or equal' },
+                { val: '>=', label: 'greater or equal' },
+                { val: 'LIKE', label: 'contains' },
+                { val: 'IN', label: 'in' },
+                { val: 'IS NULL', label: 'is empty' },
+                { val: 'IS NOT NULL', label: 'is not empty' },
+            ]
+            : [
+                { val: '=', label: 'is' },
+                { val: '!=', label: 'is not' },
+                { val: '<', label: 'less than' },
+                { val: '>', label: 'greater than' },
+                { val: '<=', label: 'less or equal' },
+                { val: '>=', label: 'greater or equal' },
+                { val: 'LIKE', label: 'contains' },
+                { val: 'STARTSWITH', label: 'starts with' },
+                { val: 'ENDSWITH', label: 'ends with' },
+                { val: 'IN', label: 'in' },
+                { val: 'EMPTY', label: 'is empty' },
+                { val: 'NOTEMPTY', label: 'is not empty' },
+            ];
+
+        const noValueOps = new Set(['EMPTY', 'NOTEMPTY', 'IS NULL', 'IS NOT NULL']);
+
+        function isBooleanField(fieldObj) {
+            if (!fieldObj) return false;
+            const type = (fieldObj.type || '').toLowerCase();
+            const hasBoolType = type === 'boolean' || type === 'bool' || type === 'true_false' || type === 'checkbox';
+            if (hasBoolType) return true;
+            
+            if (fieldObj.choices && fieldObj.choices.length === 2) {
+                const values = fieldObj.choices.map(c => String(c.value).toLowerCase());
+                const hasTrueLike = values.includes('true') || values.includes('yes') || values.includes('y') || values.includes('1');
+                const hasFalseLike = values.includes('false') || values.includes('no') || values.includes('n') || values.includes('0');
+                if (hasTrueLike && hasFalseLike) return true;
+            }
+            return false;
+        }
+
+        function getOperatorsForField(fieldObj) {
+            if (!fieldObj) return operators;
+            if (isBooleanField(fieldObj)) {
+                return [{ val: '=', label: 'is' }];
+            }
+            const type = (fieldObj.type || '').toLowerCase();
+            const isNumeric = ['integer', 'long', 'double', 'decimal', 'float', 'number', 'int'].includes(type);
+            if (isNumeric) {
+                return isSourceSF
+                    ? [
+                        { val: '=', label: 'is' },
+                        { val: '!=', label: 'is not' },
+                        { val: '<', label: 'less than' },
+                        { val: '>', label: 'greater than' },
+                        { val: '<=', label: 'less or equal' },
+                        { val: '>=', label: 'greater or equal' },
+                        { val: 'IS NULL', label: 'is empty' },
+                        { val: 'IS NOT NULL', label: 'is not empty' }
+                    ]
+                    : [
+                        { val: '=', label: 'is' },
+                        { val: '!=', label: 'is not' },
+                        { val: '<', label: 'less than' },
+                        { val: '>', label: 'greater than' },
+                        { val: '<=', label: 'less or equal' },
+                        { val: '>=', label: 'greater or equal' },
+                        { val: 'EMPTY', label: 'is empty' },
+                        { val: 'NOTEMPTY', label: 'is not empty' }
+                    ];
+            }
+            return operators;
+        }
+
+        function renderFieldOptions(selectedField) {
+            return sourceFields.map(f =>
+                `<option value="${f.name}" ${f.name === selectedField ? 'selected' : ''}>${f.label || f.name}</option>`
+            ).join('');
+        }
+
+        function renderOpOptions(fieldName, selectedOp) {
+            const fieldObj = sourceFields.find(f => f.name === fieldName);
+            const fieldOps = getOperatorsForField(fieldObj);
+            return fieldOps.map(o =>
+                `<option value="${o.val}" ${o.val === selectedOp ? 'selected' : ''}>${o.label}</option>`
+            ).join('');
+        }
+
+        let debounceTimer = null;
+        let activeInput = null;
+        let activeList = null;
+
+        function fetchSuggestions() {
+            if (!activeInput || !activeList) return;
+            const field = activeInput.dataset.field;
+            const q = activeInput.value.trim();
+            if (!field) return;
+
+            fetch(`/api/autocomplete_values?field=${field}&q=${q}`)
+                .then(res => res.json())
+                .then(data => {
+                    activeList.innerHTML = '';
+                    if (data && data.length > 0) {
+                        data.forEach(val => {
+                            const item = document.createElement('div');
+                            item.className = 'autocomplete-item';
+                            item.dataset.value = val;
+                            item.textContent = val;
+                            activeList.appendChild(item);
+                        });
+                        activeList.style.display = 'block';
+                    } else {
+                        activeList.style.display = 'none';
+                    }
+                })
+                .catch(() => {
+                    activeList.style.display = 'none';
+                });
+        }
+
+        function syncHidden() {
+            const cleaned = groups.map(g =>
+                g.filter(c => c.field && c.op)
+            ).filter(g => g.length > 0);
+            hiddenInput.value = JSON.stringify(cleaned);
+            
+            const total = cleaned.reduce((s, g) => s + g.length, 0);
+            badge.textContent = total === 0
+                ? 'All records'
+                : `${total} condition${total !== 1 ? 's' : ''} in ${cleaned.length} group${cleaned.length !== 1 ? 's' : ''}`;
+        }
+
+        function render() {
+            builder.innerHTML = '';
+            if (groups.length === 0) {
+                builder.innerHTML = `
+                    <div style="padding: 0.65rem 1.1rem; font-style: italic; color: var(--text-muted); display: flex; align-items: center; gap: 0.75rem; font-size:0.8rem;">
+                        No filters — all records will be migrated.
+                        <button type="button" id="btnFirstFilter" class="btn btn-secondary btn-sm" style="font-size:0.72rem; height:26px; padding:0 0.6rem;">
+                            + Add Filter
+                        </button>
+                    </div>
+                `;
+                document.getElementById('btnFirstFilter')?.addEventListener('click', () => {
+                    groups.push([{ field: '', op: '', value: '' }]);
+                    render();
+                });
+                syncHidden();
+                return;
+            }
+
+            // Wrap all filter rows in a padded container
+            const rowsContainer = document.createElement('div');
+            rowsContainer.style.cssText = 'padding: 0.5rem 1.1rem;';
+            builder.appendChild(rowsContainer);
+
+            groups.forEach((group, gi) => {
+                group.forEach((cond, ci) => {
+                    const isFirst = ci === 0;
+                    const rowEl = document.createElement('div');
+                    rowEl.className = 'filter-row';
+                    
+                    const prefixHtml = `<div class="filter-row-prefix">${isFirst ? '' : 'or'}</div>`;
+                    
+                    const noVal = noValueOps.has(cond.op);
+                    const fieldObj = sourceFields.find(f => f.name === cond.field);
+                    const isBool = isBooleanField(fieldObj);
+                    const hasChoices = fieldObj && fieldObj.choices && fieldObj.choices.length > 0;
+
+                    let valueHtml = '';
+                    if (noVal) {
+                        valueHtml = `<input type="text" class="fc-val" style="display:none" data-gi="${gi}" data-ci="${ci}">`;
+                    } else if (isBool) {
+                        cond.op = '=';
+                        if (hasChoices) {
+                            if (cond.value !== 'true' && cond.value !== 'false' && !fieldObj.choices.some(c => String(c.value) === cond.value)) {
+                                cond.value = fieldObj.choices[0].value;
+                            }
+                            let optionsHtml = '';
+                            fieldObj.choices.forEach(c => {
+                                optionsHtml += `<option value="${c.value}" ${cond.value === String(c.value) ? 'selected' : ''}>${c.label || c.value}</option>`;
+                            });
+                            valueHtml = `<select class="fc-val" data-gi="${gi}" data-ci="${ci}">${optionsHtml}</select>`;
+                        } else {
+                            if (cond.value !== 'true' && cond.value !== 'false') {
+                                cond.value = 'true';
+                            }
+                            valueHtml = `
+                                <select class="fc-val" data-gi="${gi}" data-ci="${ci}">
+                                    <option value="true" ${cond.value === 'true' ? 'selected' : ''}>True</option>
+                                    <option value="false" ${cond.value === 'false' ? 'selected' : ''}>False</option>
+                                </select>
+                            `;
+                        }
+                    } else if (hasChoices) {
+                        let optionsHtml = '<option value="">-- choose value --</option>';
+                        fieldObj.choices.forEach(c => {
+                            optionsHtml += `<option value="${c.value}" ${cond.value === String(c.value) ? 'selected' : ''}>${c.label || c.value}</option>`;
+                        });
+                        valueHtml = `<select class="fc-val" data-gi="${gi}" data-ci="${ci}">${optionsHtml}</select>`;
+                    } else {
+                        valueHtml = `
+                            <div class="fc-val-container" style="position: relative; display: inline-block; width: 140px;">
+                                <input type="text" class="fc-val" placeholder="-- value --" data-gi="${gi}" data-ci="${ci}"
+                                    value="${cond.value || ''}" autocomplete="off" style="width: 100%;">
+                                <div class="autocomplete-list"></div>
+                            </div>
+                        `;
+                    }
+
+                    const opStyle = isBool ? 'style="display:none;"' : '';
+                    const fieldsHtml = `
+                        <div class="filter-row-fields">
+                            <select class="fc-field" data-gi="${gi}" data-ci="${ci}">
+                                <option value="">-- choose field --</option>
+                                ${renderFieldOptions(cond.field)}
+                            </select>
+                            <select class="fc-op" data-gi="${gi}" data-ci="${ci}" ${opStyle}>
+                                <option value="">-- oper --</option>
+                                ${renderOpOptions(cond.field, cond.op)}
+                            </select>
+                            ${valueHtml}
+                        </div>
+                    `;
+
+                    const actionsHtml = `
+                        <div class="filter-row-actions">
+                            <button type="button" class="btn-filter btn-filter--remove" data-gi="${gi}" data-ci="${ci}" title="Remove condition">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+                            </button>
+                            ${isFirst ? `
+                                <button type="button" class="btn-filter btn-filter--or" data-gi="${gi}" title="Add condition (OR)">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+                                </button>
+                            ` : ''}
+                        </div>
+                    `;
+
+                    rowEl.innerHTML = prefixHtml + fieldsHtml + actionsHtml;
+                    rowsContainer.appendChild(rowEl);
+                });
+            });
+
+            const andRow = document.createElement('div');
+            andRow.style.cssText = 'padding: 0.3rem 1.1rem 0.6rem 1.1rem;';
+            andRow.innerHTML = `
+                <button type="button" class="btn btn-secondary btn-sm btn-filter--and" style="font-size:0.72rem; height:26px; padding:0 0.6rem;">
+                    + AND Group
+                </button>
+            `;
+            builder.appendChild(andRow);
+
+            syncHidden();
+            attachEvents();
+        }
+
+        function attachEvents() {
+            builder.querySelectorAll('.fc-field').forEach(sel => {
+                sel.addEventListener('change', e => {
+                    const gi = +e.target.dataset.gi;
+                    const ci = +e.target.dataset.ci;
+                    const field = e.target.value;
+                    const fieldObj = sourceFields.find(f => f.name === field);
+                    
+                    groups[gi][ci].field = field;
+                    groups[gi][ci].value = '';
+                    
+                    if (isBooleanField(fieldObj)) {
+                        groups[gi][ci].op = '=';
+                    } else {
+                        const ops = getOperatorsForField(fieldObj);
+                        groups[gi][ci].op = ops[0]?.val || '=';
+                    }
+                    render();
+                });
+            });
+
+            builder.querySelectorAll('.fc-op').forEach(sel => {
+                sel.addEventListener('change', e => {
+                    const gi = +e.target.dataset.gi;
+                    const ci = +e.target.dataset.ci;
+                    groups[gi][ci].op = e.target.value;
+                    render();
+                });
+            });
+
+            builder.querySelectorAll('.fc-val').forEach(inp => {
+                const gi = +inp.dataset.gi;
+                const ci = +inp.dataset.ci;
+                
+                if (inp.tagName === 'INPUT') {
+                    inp.dataset.field = groups[gi][ci].field;
+                }
+
+                inp.addEventListener('input', e => {
+                    groups[gi][ci].value = e.target.value;
+                    syncHidden();
+                });
+
+                inp.addEventListener('change', e => {
+                    groups[gi][ci].value = e.target.value;
+                    syncHidden();
+                });
+
+                if (inp.tagName !== 'INPUT') return;
+                
+                const container = inp.closest('.fc-val-container');
+                const listEl = container.querySelector('.autocomplete-list');
+
+                inp.addEventListener('input', () => {
+                    activeInput = inp;
+                    activeList = listEl;
+                    syncHidden();
+
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(fetchSuggestions, 300);
+                });
+
+                inp.addEventListener('focus', () => {
+                    fetchSuggestions();
+                });
+
+                inp.addEventListener('blur', () => {
+                    setTimeout(() => {
+                        listEl.style.display = 'none';
+                    }, 200);
+                });
+
+                listEl.addEventListener('click', e => {
+                    const item = e.target.closest('.autocomplete-item');
+                    if (item) {
+                        const val = item.dataset.value;
+                        inp.value = val;
+                        groups[gi][ci].value = val;
+                        syncHidden();
+                        listEl.style.display = 'none';
+                    }
+                });
+            });
+
+            builder.querySelectorAll('.btn-filter--and').forEach(btn => {
+                btn.addEventListener('click', e => {
+                    groups.push([{ field: '', op: '', value: '' }]);
+                    render();
+                });
+            });
+
+            builder.querySelectorAll('.btn-filter--or').forEach(btn => {
+                btn.addEventListener('click', e => {
+                    const gi = +e.target.dataset.gi;
+                    groups[gi].push({ field: '', op: '', value: '' });
+                    render();
+                });
+            });
+
+            builder.querySelectorAll('.btn-filter--remove').forEach(btn => {
+                btn.addEventListener('click', e => {
+                    const gi = +e.target.dataset.gi;
+                    const ci = +e.target.dataset.ci;
+                    if (ci === 0) {
+                        groups.splice(gi, 1);
+                    } else {
+                        groups[gi].splice(ci, 1);
+                    }
+                    render();
+                });
+            });
+        }
+
+        document.getElementById('btnClearFilters').addEventListener('click', () => {
+            groups = [];
+            render();
+        });
+
+        document.getElementById('filtersForm').addEventListener('submit', () => {
+            syncHidden();
+        });
+
+        render();
+    })();
+
+    // ─── Data Preview Grid Logic ───
+    function previewData() {
+        const btn = document.getElementById('btnPreviewData');
+        const container = document.getElementById('previewTableContainer');
+        const emptyState = document.getElementById('previewEmptyState');
+        const statusEl = document.getElementById('previewStatus');
+        const countVal = document.getElementById('previewTotalCount');
+        const headRow = document.getElementById('tblPreviewHeader');
+        const tblBody = document.getElementById('tblPreviewBody');
+
+        const filters = document.getElementById('filterConditionsInput').value;
+        const orderbyField = document.querySelector('select[name="orderby_field"]').value;
+        const orderbyDir = document.querySelector('select[name="orderby_dir"]').value;
+
+        btn.disabled = true;
+        btn.textContent = 'Loading...';
+        emptyState.style.display = 'none';
+
+        fetch('/api/preview_data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                filter_conditions: JSON.parse(filters),
+                orderby_field: orderbyField,
+                orderby_dir: orderbyDir
+            })
+        })
+        .then(res => {
+            if (!res.ok) return res.json().then(e => { throw new Error(e.error || 'Server error') });
+            return res.json();
+        })
+        .then(data => {
+            btn.disabled = false;
+            btn.textContent = '⚡ Preview Filtered Data';
+
+            if (data.ok && data.records) {
+                countVal.textContent = data.total_count;
+                statusEl.style.display = 'block';
+
+                if (data.records.length > 0) {
+                    headRow.innerHTML = '';
+                    tblBody.innerHTML = '';
+
+                    const cols = new Set();
+                    data.records.forEach(r => {
+                        Object.keys(r).forEach(k => {
+                            if (k !== 'attributes') cols.add(k);
+                        });
+                    });
+                    const colList = Array.from(cols);
+
+                    colList.forEach(c => {
+                        const th = document.createElement('th');
+                        th.textContent = c;
+                        headRow.appendChild(th);
+                    });
+
+                    data.records.forEach(r => {
+                        const tr = document.createElement('tr');
+                        colList.forEach(c => {
+                            const td = document.createElement('td');
+                            const val = r[c];
+                            if (typeof val === 'object' && val !== null) {
+                                td.textContent = JSON.stringify(val);
+                            } else {
+                                td.textContent = val !== undefined ? val : '—';
+                            }
+                            tr.appendChild(td);
+                        });
+                        tblBody.appendChild(tr);
+                    });
+
+                    container.style.display = 'block';
+                    emptyState.style.display = 'none';
+                } else {
+                    container.style.display = 'none';
+                    emptyState.textContent = 'No records match these filter conditions.';
+                    emptyState.style.display = 'block';
+                }
+            } else {
+                throw new Error('Data format error from server');
+            }
+        })
+        .catch(err => {
+            btn.disabled = false;
+            btn.textContent = '⚡ Preview Filtered Data';
+            container.style.display = 'none';
+            emptyState.textContent = 'Failed to load preview: ' + err.message;
+            emptyState.style.display = 'block';
+            statusEl.style.display = 'none';
+            showToast('Preview failed: ' + err.message, 'error');
+        });
+    }
+</script>
+{% endblock %}

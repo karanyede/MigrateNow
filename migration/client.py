@@ -175,43 +175,92 @@ class ServiceNowClient:
 
     def search_tables(self, search_term: str, limit: int = 50) -> list[dict]:
         """
-        Search for tables whose ``name`` contains *search_term*.
-
-        Uses ``nameLIKE`` (case-insensitive contains) on ``sys_db_object``
-        and also checks ``label``.  Returns up to *limit* results sorted
-        alphabetically by name.
-
-        This is much cheaper than ``get_tables()`` because it filters
-        server-side and returns a small result set.
+        Search for tables using synonym-boosted semantic matching and custom ranking.
         """
-        query = (
-            f"nameLIKE{search_term}"
-            f"^ORlabelLIKE{search_term}"
-            f"^ORDERBYname"
-        )
+        search_term_lower = search_term.lower()
+        search_tokens = set(search_term_lower.split())
+        
+        SYNONYMS = {
+            "user": ["sys_user", "contact", "lead", "account", "profile"],
+            "people": ["sys_user", "contact", "lead"],
+            "employee": ["sys_user", "contact"],
+            "ticket": ["incident", "task", "case", "problem", "change_request"],
+            "incident": ["incident", "task", "case"],
+            "case": ["case", "incident", "task"],
+            "company": ["core_company", "account"],
+            "organization": ["core_company", "account"],
+            "group": ["sys_user_group", "collaborationgroup", "group"],
+            "task": ["task", "incident", "problem", "change_request"],
+            "asset": ["alm_asset", "asset", "product2"],
+            "product": ["product2", "alm_asset", "cmdb_model"],
+            "location": ["cmn_location", "address"],
+        }
+        
+        query_parts = [
+            f"nameLIKE{search_term}",
+            f"labelLIKE{search_term}"
+        ]
+        
+        synonym_targets = []
+        for token in search_tokens:
+            if token in SYNONYMS:
+                for syn in SYNONYMS[token]:
+                    query_parts.append(f"name={syn}")
+                    synonym_targets.append(syn)
+                    
+        query = "^OR".join(query_parts)
+        
         resp = self._request(
             "GET",
             "/api/now/table/sys_db_object",
             params={
                 "sysparm_query": query,
                 "sysparm_fields": "name,label",
-                "sysparm_limit": limit,
+                "sysparm_limit": max(100, limit * 2),  # fetch more for better ranking
                 "sysparm_no_count": "true",
                 "sysparm_exclude_reference_link": "true",
             },
         )
         resp.raise_for_status()
         results = resp.json().get("result", [])
+        
         tables = [
             {"name": t["name"], "label": t.get("label", t["name"])}
             for t in results
             if t.get("name")
         ]
+        
+        # Rank results
+        for item in tables:
+            name = item.get("name", "").lower()
+            label = item.get("label", "").lower()
+            score = 0.0
+            
+            if name == search_term_lower or label == search_term_lower:
+                score = 100.0
+            elif name.startswith(search_term_lower) or label.startswith(search_term_lower):
+                score = 80.0
+            elif any(tgt in name for tgt in synonym_targets) or any(tgt in label for tgt in synonym_targets):
+                score = 60.0
+            else:
+                name_tokens = set(name.replace("_", " ").split())
+                label_tokens = set(label.lower().split())
+                overlap = search_tokens.intersection(name_tokens.union(label_tokens))
+                if overlap:
+                    score = 40.0 + len(overlap) * 5.0
+                elif search_term_lower in name or search_term_lower in label:
+                    score = 20.0
+            item["_score"] = score
+            
+        tables.sort(key=lambda x: (-x.get("_score", 0), x.get("name", "")))
+        for item in tables:
+            item.pop("_score", None)
+            
         logger.debug(
-            "Table search '%s' on %s → %d results.",
+            "Table semantic search '%s' on %s → %d results.",
             search_term, self.role, len(tables),
         )
-        return tables
+        return tables[:limit]
 
     # ── Inheritance chain helpers ──────────────────────────────────
 

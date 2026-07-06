@@ -14,22 +14,39 @@
 {# ── Wizard Flow Bar ─────────────────────────────────────── #}
 <div class="wizard-flow-bar">
     <div class="wizard-flow-step wizard-flow-step--done">
-        <div class="wizard-flow-step__num">1</div>
+        <div class="wizard-flow-step__num"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                style="width:12px;height:12px">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+            </svg></div>
         <span class="wizard-flow-step__label">Connect</span>
     </div>
-    <div class="wizard-flow-connector wizard-flow-connector--active"></div>
+    <div class="wizard-flow-connector wizard-flow-connector--done"></div>
     <div class="wizard-flow-step wizard-flow-step--done">
-        <div class="wizard-flow-step__num">2</div>
+        <div class="wizard-flow-step__num"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                style="width:12px;height:12px">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+            </svg></div>
         <span class="wizard-flow-step__label">Select Tables</span>
     </div>
-    <div class="wizard-flow-connector wizard-flow-connector--active"></div>
+    <div class="wizard-flow-connector wizard-flow-connector--done"></div>
     <div class="wizard-flow-step wizard-flow-step--done">
-        <div class="wizard-flow-step__num">3</div>
+        <div class="wizard-flow-step__num"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                style="width:12px;height:12px">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+            </svg></div>
         <span class="wizard-flow-step__label">Map Fields</span>
+    </div>
+    <div class="wizard-flow-connector wizard-flow-connector--done"></div>
+    <div class="wizard-flow-step wizard-flow-step--done">
+        <div class="wizard-flow-step__num"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                style="width:12px;height:12px">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+            </svg></div>
+        <span class="wizard-flow-step__label">Filters & Preview</span>
     </div>
     <div class="wizard-flow-connector wizard-flow-connector--active"></div>
     <div class="wizard-flow-step wizard-flow-step--active">
-        <div class="wizard-flow-step__num">4</div>
+        <div class="wizard-flow-step__num">5</div>
         <span class="wizard-flow-step__label">Confirm</span>
     </div>
 </div>
@@ -104,7 +121,7 @@
 
 <form method="POST" action="{{ url_for('migrate_confirm') }}" id="confirmForm">
     <div class="btn-row">
-        <a href="{{ url_for('connect_page') }}" class="btn btn-secondary">← Back to Connections</a>
+        <a href="{{ url_for('filters_page') }}" class="btn btn-secondary">← Back</a>
         <button type="submit" class="btn btn-success btn-lg" id="btnStartMigration">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" style="width:16px;height:16px;">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />

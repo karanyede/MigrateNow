@@ -59,6 +59,72 @@ class DiffResult:
         return len(self.inserts) + len(self.updates) + self.skipped
 
 
+class TargetMatcher:
+    """
+    Builds O(1) indexes on target records based on coalesce configuration
+    to support matching via primary key or multi-field AND/OR coalesce conditions.
+    """
+
+    def __init__(
+        self,
+        target_records: list[dict],
+        field_mapping: dict[str, str],
+        coalesce_config: dict | None = None,
+    ) -> None:
+        self.mapping = field_mapping
+        self.reverse_mapping = {tgt: src for src, tgt in field_mapping.items()}
+        self.coalesce_config = coalesce_config or {}
+        
+        self.enabled = self.coalesce_config.get("enabled", False) and bool(self.coalesce_config.get("fields"))
+        self.logic = self.coalesce_config.get("logic", "AND").upper()
+        self.fields = self.coalesce_config.get("fields", [])
+        
+        self.and_index = {}
+        self.or_indexes = {}
+        self.pk_index = {}
+        
+        if self.enabled:
+            if self.logic == "AND":
+                for rec in target_records:
+                    key = tuple(str(rec.get(f, "")).strip() for f in self.fields)
+                    if any(key):
+                        self.and_index[key] = rec
+            else:
+                for f in self.fields:
+                    self.or_indexes[f] = {}
+                for rec in target_records:
+                    for f in self.fields:
+                        val = str(rec.get(f, "")).strip()
+                        if val:
+                            self.or_indexes[f][val] = rec
+        else:
+            for rec in target_records:
+                key = rec.get("sys_id", "") or rec.get("Id", "")
+                if key:
+                    self.pk_index[key] = rec
+
+    def match(self, src_record: dict) -> dict | None:
+        if not self.enabled:
+            sid = src_record.get("sys_id", "") or src_record.get("Id", "")
+            return self.pk_index.get(sid)
+            
+        if self.logic == "AND":
+            key_parts = []
+            for f in self.fields:
+                src_f = self.reverse_mapping.get(f)
+                val = str(src_record.get(src_f, "")).strip() if src_f else ""
+                key_parts.append(val)
+            return self.and_index.get(tuple(key_parts))
+        else:
+            for f in self.fields:
+                src_f = self.reverse_mapping.get(f)
+                if src_f:
+                    val = str(src_record.get(src_f, "")).strip()
+                    if val and val in self.or_indexes[f]:
+                        return self.or_indexes[f][val]
+        return None
+
+
 class DiffEngine:
     """
     Categorise source records into inserts vs. updates vs. skipped.
@@ -67,8 +133,8 @@ class DiffEngine:
     ----------
     field_mapping : dict[str, str]
         ``{source_field: target_field}`` mapping.
-    target_map : dict[str, dict]
-        ``{matching_key: target_record}``.
+    target_matcher : TargetMatcher
+        An initialized TargetMatcher helper.
     coalesce_mode : bool
         If True, inject ``_target_sys_id`` into update records.
     """
@@ -76,19 +142,17 @@ class DiffEngine:
     def __init__(
         self,
         field_mapping: dict[str, str],
-        target_map: dict[str, dict],
+        target_matcher: TargetMatcher,
         coalesce_mode: bool = False,
     ) -> None:
         self.mapping = field_mapping
-        self.target_map = target_map
+        self.target_matcher = target_matcher
         self.coalesce_mode = coalesce_mode
         self._diff_log_count = 0
 
     def _is_different(self, source_rec: dict, target_rec: dict) -> bool:
         """Return True if any mapped fields differ between source and target."""
         for src_f, tgt_f in self.mapping.items():
-            # Skip system fields — they are auto-set by ServiceNow
-            # and will always differ between instances.
             if src_f in SKIP_DIFF_FIELDS or tgt_f in SKIP_DIFF_FIELDS:
                 continue
 
@@ -111,23 +175,15 @@ class DiffEngine:
     def compute(self, source_records: list[dict]) -> DiffResult:
         result = DiffResult()
         
-        # Pre-filter mapping to skip system fields once
         effective_mapping = [
             (src, tgt) for src, tgt in self.mapping.items()
             if src not in SKIP_DIFF_FIELDS and tgt not in SKIP_DIFF_FIELDS
         ]
 
         for record in source_records:
-            # Support both SN (sys_id) and SF (Id) primary keys
-            sid = record.get("sys_id", "") or record.get("Id", "")
-            if not sid:
-                result.skipped += 1
-                continue
-
-            target_rec = self.target_map.get(sid)
+            target_rec = self.target_matcher.match(record)
 
             if target_rec:
-                # Record exists on target. Check if data changed.
                 is_diff = False
                 for src_f, tgt_f in effective_mapping:
                     if str(record.get(src_f, "")).strip() != str(target_rec.get(tgt_f, "")).strip():
@@ -136,7 +192,8 @@ class DiffEngine:
                 
                 if is_diff:
                     if self.coalesce_mode:
-                        record["_target_sys_id"] = target_rec["sys_id"]
+                        record["_target_sys_id"] = target_rec.get("sys_id", "")
+                        record["_target_sf_id"] = target_rec.get("Id", "")
                     result.updates.append(record)
                 else:
                     result.skipped += 1

@@ -577,7 +577,7 @@ breadcrumb %}
   <div class="btn-row" style="margin-top: 1.5rem">
     <button
       type="button"
-      id="btnExportHtml"
+      id="btnExportPdf"
       class="btn btn-secondary"
       style="display: flex; align-items: center; gap: 6px; cursor: pointer"
     >
@@ -594,7 +594,7 @@ breadcrumb %}
           d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m.75 12 3 3m0 0 3-3m-3 3v-6m-1.5-9H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"
         />
       </svg>
-      Export Report
+      Export PDF
     </button>
     <button
       type="button"
@@ -1063,11 +1063,11 @@ breadcrumb %}
       }
 
       // Bind export events
-      const btnHtml = document.getElementById("btnExportHtml");
+      const btnPdf = document.getElementById("btnExportPdf");
       const btnCsv = document.getElementById("btnExportCsv");
-      if (btnHtml) {
-        btnHtml.onclick = function () {
-          exportHtmlReport(r);
+      if (btnPdf) {
+        btnPdf.onclick = function () {
+          exportPdfReport(r);
         };
       }
       if (btnCsv) {
@@ -1089,155 +1089,29 @@ breadcrumb %}
       URL.revokeObjectURL(url);
     }
 
-    function exportHtmlReport(r) {
-      const timeFmt = (s) => {
-        if (!s && s !== 0) return "—";
-        if (s >= 60)
-          return Math.floor(s / 60) + "m " + Math.round(s % 60) + "s";
-        return s.toFixed(1) + "s";
-      };
-      const dateStr = new Date().toLocaleString();
-      const html = `<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>MigrateNow - Migration Report</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f3f4f6; color: #1f2937; margin: 0; padding: 2rem; }
-        .container { max-width: 800px; margin: 0 auto; background: #ffffff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); padding: 2.5rem; }
-        .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #e5e7eb; padding-bottom: 1.5rem; margin-bottom: 2rem; }
-        .title { font-size: 1.75rem; font-weight: 800; color: #4f46e5; margin: 0; }
-        .subtitle { font-size: 0.875rem; color: #6b7280; }
-        .badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; background: #e0e7ff; color: #4338ca; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
-        .stat-card { border: 1px solid #e5e7eb; border-radius: 6px; padding: 1rem; text-align: center; background: #fafafa; }
-        .stat-val { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.25rem; }
-        .stat-val.success { color: #10b981; }
-        .stat-val.error { color: #ef4444; }
-        .stat-val.warn { color: #f59e0b; }
-        .stat-lbl { font-size: 0.75rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
-        .section-title { font-size: 1.125rem; font-weight: 700; margin-top: 2rem; margin-bottom: 1rem; color: #374151; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }
-        th, td { text-align: left; padding: 0.75rem 1rem; border-bottom: 1px solid #e5e7eb; }
-        th { background: #f9fafb; font-weight: 600; color: #475569; font-size: 0.875rem; }
-        td { font-size: 0.875rem; }
-        .info-table td { width: 50%; }
-        .footer { font-size: 0.75rem; color: #9ca3af; text-align: center; margin-top: 3rem; border-top: 1px solid #e5e7eb; padding-top: 1rem; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <div>
-                <h1 class="title">MigrateNow Report</h1>
-                <div class="subtitle">Generated on ${dateStr}</div>
-            </div>
-            <span class="badge">${r.migration_type.replace("_", " → ").toUpperCase()}</span>
-        </div>
-
-        <div class="section-title">Configuration Details</div>
-        <table class="info-table">
-            <tbody>
-                <tr>
-                    <td><strong>Source Table:</strong> ${r.source_table}</td>
-                    <td><strong>Source Instance:</strong> ${r.source_instance}</td>
-                </tr>
-                <tr>
-                    <td><strong>Target Table:</strong> ${r.target_table}</td>
-                    <td><strong>Target Instance:</strong> ${r.target_instance}</td>
-                </tr>
-                <tr>
-                    <td><strong>Fetch Mode:</strong> ${r.fetch_mode_used ? r.fetch_mode_used.toUpperCase() : "AUTO"}</td>
-                    <td><strong>Total Records Processed:</strong> ${r.total_source_records.toLocaleString()}</td>
-                </tr>
-            </tbody>
-        </table>
-
-        <div class="section-title">Migration Summary</div>
-        <div class="grid">
-            <div class="stat-card">
-                <div class="stat-val">${r.total_source_records.toLocaleString()}</div>
-                <div class="stat-lbl">Fetched</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-val success">${r.inserts.toLocaleString()}</div>
-                <div class="stat-lbl">Inserted</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-val success">${r.updates.toLocaleString()}</div>
-                <div class="stat-lbl">Updated</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-val warn">${r.skipped.toLocaleString()}</div>
-                <div class="stat-lbl">Skipped</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-val error">${r.failed.toLocaleString()}</div>
-                <div class="stat-lbl">Failed</div>
-            </div>
-        </div>
-
-        <div class="section-title">Timing Breakdown</div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Phase</th>
-                    <th>Duration</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr><td>Fetch Source</td><td>${timeFmt(r.timing.fetch_source)}</td></tr>
-                <tr><td>Fetch Target</td><td>${timeFmt(r.timing.fetch_target)}</td></tr>
-                <tr><td>Diff Compute</td><td>${timeFmt(r.timing.diff)}</td></tr>
-                <tr><td>Load Records</td><td>${timeFmt(r.timing.load)}</td></tr>
-                <tr style="font-weight:bold; border-top:2px solid #e5e7eb;"><td>Total Duration</td><td>${timeFmt(r.timing.total)}</td></tr>
-            </tbody>
-        </table>
-
-        <div class="section-title">API Call Statistics</div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Role</th>
-                    <th>Calls Made</th>
-                    <th>Rate Limit /hr</th>
-                    <th>Run Remaining (est)</th>
-                    <th>Org Remaining</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>Source (${r.source_instance})</td>
-                    <td>${(r.api_calls.source || {}).calls_made || 0}</td>
-                    <td>${(r.api_calls.source || {}).rate_limit_per_hour || "N/A"}</td>
-                    <td>${(r.api_calls.source || {}).estimated_remaining || "N/A"}</td>
-                    <td>${(r.api_calls.source || {}).org_remaining || "N/A"}</td>
-                </tr>
-                <tr>
-                    <td>Target (${r.target_instance})</td>
-                    <td>${(r.api_calls.target || {}).calls_made || 0}</td>
-                    <td>${(r.api_calls.target || {}).rate_limit_per_hour || "N/A"}</td>
-                    <td>${(r.api_calls.target || {}).estimated_remaining || "N/A"}</td>
-                    <td>${(r.api_calls.target || {}).org_remaining || "N/A"}</td>
-                </tr>
-                <tr style="font-weight:bold; border-top:2px solid #e5e7eb;">
-                    <td>Total API Calls</td>
-                    <td colspan="4">${r.api_calls.total_calls || 0}</td>
-                </tr>
-            </tbody>
-        </table>
-
-        <div class="footer">
-            MigrateNow v2.0 - Enterprise Data Migration Platform
-        </div>
-    </div>
-</body>
-</html>`;
-      triggerDownload(
-        html,
-        "migratenow_report_" + Date.now() + ".html",
-        "text/html",
-      );
+    function exportPdfReport(r) {
+      fetch('/api/report/pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(r)
+      })
+      .then(res => {
+        if (!res.ok) throw new Error('Server error generating PDF');
+        return res.blob();
+      })
+      .then(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "migratenow_report_" + Date.now() + ".pdf";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      })
+      .catch(err => {
+        alert("Failed to export PDF report: " + err.message);
+      });
     }
 
     function exportCsvReport(r) {

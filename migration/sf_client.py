@@ -175,7 +175,7 @@ class SalesforceClient:
                 )
         elapsed_ms = (time.perf_counter() - t0) * 1000
 
-        if not resp.ok:
+        if not resp.ok and "soapenv:Envelope" not in resp.text and "env:Envelope" not in resp.text:
             error_detail = resp.text[:500]
             logger.error(
                 "SF SOAP login failed (HTTP %s): %s",
@@ -361,24 +361,65 @@ class SalesforceClient:
 
     def search_objects(self, search_term: str, limit: int = 50) -> list[dict]:
         """
-        Search for SObjects whose name or label contains *search_term*.
-
-        Uses client-side filtering of the cached objects list.
-        Returns up to *limit* results.
+        Search for SObjects using synonym-boosted semantic matching and custom ranking.
         """
         objects = self.get_objects()
-        term = search_term.lower()
-        matches = [
-            {"name": obj["name"], "label": obj["label"]}
-            for obj in objects
-            if term in obj["name"].lower() or term in obj["label"].lower()
-        ]
-        # Sort: exact name match first, then starts-with, then contains
-        matches.sort(key=lambda x: (
-            0 if x["name"].lower() == term else
-            1 if x["name"].lower().startswith(term) else 2,
-            x["name"],
-        ))
+        search_term_lower = search_term.lower()
+        search_tokens = set(search_term_lower.split())
+        
+        SYNONYMS = {
+            "user": ["sys_user", "contact", "lead", "account", "profile"],
+            "people": ["sys_user", "contact", "lead"],
+            "employee": ["sys_user", "contact"],
+            "ticket": ["incident", "task", "case", "problem", "change_request"],
+            "incident": ["incident", "task", "case"],
+            "case": ["case", "incident", "task"],
+            "company": ["core_company", "account"],
+            "organization": ["core_company", "account"],
+            "group": ["sys_user_group", "collaborationgroup", "group"],
+            "task": ["task", "incident", "problem", "change_request"],
+            "asset": ["alm_asset", "asset", "product2"],
+            "product": ["product2", "alm_asset", "cmdb_model"],
+            "location": ["cmn_location", "address"],
+        }
+        
+        synonym_targets = []
+        for token in search_tokens:
+            if token in SYNONYMS:
+                synonym_targets.extend(SYNONYMS[token])
+                
+        matches = []
+        for obj in objects:
+            name = obj["name"].lower()
+            label = obj["label"].lower()
+            score = 0.0
+            
+            if name == search_term_lower or label == search_term_lower:
+                score = 100.0
+            elif name.startswith(search_term_lower) or label.startswith(search_term_lower):
+                score = 80.0
+            elif any(tgt in name for tgt in synonym_targets) or any(tgt in label for tgt in synonym_targets):
+                score = 60.0
+            else:
+                name_tokens = set(name.replace("_", " ").split())
+                label_tokens = set(label.lower().split())
+                overlap = search_tokens.intersection(name_tokens.union(label_tokens))
+                if overlap:
+                    score = 40.0 + len(overlap) * 5.0
+                elif search_term_lower in name or search_term_lower in label:
+                    score = 20.0
+                    
+            if score > 0.0:
+                matches.append({
+                    "name": obj["name"],
+                    "label": obj["label"],
+                    "_score": score
+                })
+                
+        matches.sort(key=lambda x: (-x["_score"], x["name"]))
+        for item in matches:
+            item.pop("_score", None)
+            
         return matches[:limit]
 
     def get_object_fields(self, object_name: str) -> list[dict]:

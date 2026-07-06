@@ -100,9 +100,12 @@ class RateTracker:
 
     def record_call(self, instance: str, response=None) -> None:
         """
-        Increment the call counter for *instance* (``"source"`` or
-        ``"target"``) and parse rate-limit headers from *response*.
+        Increment the call counter for *instance* and parse rate-limit headers.
+        Dynamically registers arbitrary instance roles (e.g. 'test', 'data_ops') to prevent KeyErrors.
         """
+        if instance not in self._instances:
+            self._instances[instance] = _InstanceTracker(label=instance.capitalize())
+            
         trk = self._instances[instance]
         with trk._lock:
             trk.calls_total += 1
@@ -111,7 +114,6 @@ class RateTracker:
             if response is not None:
                 self._parse_headers(trk, response)
 
-            # Audit log (file only — no console output per call)
             status = getattr(response, "status_code", "?") if response else "?"
             run_remaining = trk.estimated_remaining
             run_remaining_str = str(run_remaining) if run_remaining is not None else "?"
@@ -123,12 +125,18 @@ class RateTracker:
             )
 
     def get_total_calls(self, instance: str) -> int:
+        if instance not in self._instances:
+            return 0
         return self._instances[instance].calls_total
 
     def get_remaining(self, instance: str) -> int | None:
+        if instance not in self._instances:
+            return None
         return self._instances[instance].estimated_remaining
 
     def get_rate_limit(self, instance: str) -> int:
+        if instance not in self._instances:
+            return 0
         return self._instances[instance].rate_limit
 
     def summary(self) -> dict:

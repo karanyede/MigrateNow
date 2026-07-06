@@ -40,6 +40,11 @@
     <div class="wizard-flow-connector"></div>
     <div class="wizard-flow-step">
         <div class="wizard-flow-step__num">4</div>
+        <span class="wizard-flow-step__label">Filters & Preview</span>
+    </div>
+    <div class="wizard-flow-connector"></div>
+    <div class="wizard-flow-step">
+        <div class="wizard-flow-step__num">5</div>
         <span class="wizard-flow-step__label">Migrate</span>
     </div>
 </div>
@@ -180,84 +185,52 @@
     {% set target_is_sn = migration_type in ['sn_sn', 'sf_sn'] %}
 
     <div class="card" id="coalesceCard">
-        <div class="card__title" style="margin-bottom:0.2rem;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-                style="width:16px;height:16px;display:inline;vertical-align:middle;margin-right:0.4rem;color:var(--cyan);">
-                <path stroke-linecap="round" stroke-linejoin="round"
-                    d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
-            </svg>
-            Deduplication Settings
+        <div class="card__title" style="margin-bottom:0.2rem; display:flex; align-items:center; justify-content:space-between;">
+            <div style="display:flex; align-items:center;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                    style="width:16px;height:16px;display:inline;vertical-align:middle;margin-right:0.4rem;color:var(--cyan);">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+                </svg>
+                Deduplication Settings
+            </div>
+            <label style="display:inline-flex; align-items:center; font-size:0.85rem; font-weight:600; color:var(--text-primary); cursor:pointer;">
+                <input type="checkbox" id="chkCoalesceEnable" style="margin-right:0.5rem; width:15px; height:15px;" checked>
+                Enable Deduplication
+            </label>
         </div>
         <div class="card__subtitle">
-            {% if target_is_sn %}
-            Prevent duplicate records by mapping the source <code
-                style="font-family:'JetBrains Mono',monospace;color:var(--cyan);font-size:0.8rem;">sys_id</code> to a
-            legacy sysid field on the target table.
-            {% else %}
-            Prevent duplicates using a Salesforce External ID field (<code
-                style="font-family:'JetBrains Mono',monospace;color:var(--cyan);font-size:0.8rem;">SN_Legacy_Id__c</code>)
-            on the target object.
-            {% endif %}
+            Configure how target records are matched to prevent duplicates. If disabled, or if no fields are selected, the migration will fallback to default primary key matching (sys_id or Id).
         </div>
 
-        <div id="coalesceStatus">
-            <div class="coalesce-status-row">
-                <span class="spinner-sm" id="coalesceSpinner"></span>
-                <span id="coalesceMsg" style="color:var(--text-secondary)">
-                    Checking target {% if target_is_sn %}table{% else %}object{% endif %} for dedup field…
-                </span>
+        <div id="coalesceSettingsDetails" style="margin-top: 1rem; border-top: 1px solid var(--border-hairline); padding-top: 0.75rem;">
+            <!-- AND/OR logic selection -->
+            <div style="display:flex; align-items:center; gap:1.5rem; margin-bottom:1rem; font-size:0.85rem; color:var(--text-secondary);">
+                <span>Match logic:</span>
+                <label style="display:inline-flex; align-items:center; cursor:pointer; gap:0.25rem;">
+                    <input type="radio" name="coalesce_logic" value="AND" checked> ALL selected fields must match (AND)
+                </label>
+                <label style="display:inline-flex; align-items:center; cursor:pointer; gap:0.25rem;">
+                    <input type="radio" name="coalesce_logic" value="OR"> ANY selected field can match (OR)
+                </label>
+            </div>
+
+            <!-- List of mapped fields to choose from -->
+            <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0.4rem;">Select mapped target fields to match on:</div>
+            <div id="coalesceFieldsList" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:0.5rem; max-height:120px; overflow-y:auto; padding:0.5rem; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:var(--radius-sm);">
+                <div style="grid-column: 1/-1; text-align:center; color:var(--text-muted); font-style:italic; padding:0.5rem 0;">No mapped fields available yet. Map some fields above.</div>
             </div>
         </div>
 
-        <div id="coalesceActions" style="margin-top:0.75rem; display:none;"></div>
-        <input type="hidden" name="coalesce_field" id="coalesceFieldInput" value="">
+        <input type="hidden" name="coalesce_config" id="coalesceConfigInput" value="">
     </div>
 
     <input type="hidden" name="fetch_mode" value="auto">
-    {# Filter conditions — serialised JSON #}
-    <input type="hidden" name="filter_conditions" id="filterConditionsInput" value="[]">
-
-    <!-- ── Filter Conditions Card ────────────────────────────────────── -->
-    <div class="card">
-        <div class="card__header">
-            <div class="card__header-left">
-                <div class="card__title">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
-                        style="width:16px;height:16px;display:inline;vertical-align:middle;margin-right:0.4rem;color:var(--amber);">
-                        <path stroke-linecap="round" stroke-linejoin="round"
-                            d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
-                    </svg>
-                    Filter Conditions
-                </div>
-                <div class="card__subtitle">Only migrate records matching these conditions. Leave empty to migrate all
-                    records.</div>
-            </div>
-            <div class="card__header-right">
-                <span id="filterSummaryBadge" style="font-size:0.72rem;color:var(--text-muted);">All records</span>
-            </div>
-        </div>
-
-        <div id="filterBuilder"></div>
-
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:1rem; border-top:1px solid var(--border-hairline); padding-top:1rem;">
-            <div style="display:flex; align-items:center; gap:0.5rem;">
-                <div style="width:28px; flex-shrink:0;"></div>
-                <input type="number" id="filterLimit" name="limit" class="form-input" style="width:100px; height:32px; font-size:0.8rem; padding:0 0.5rem; background: var(--surface-3); border: 1px solid var(--border-moderate); border-radius: var(--radius-xs); color: var(--text-primary); outline: none;" min="1" placeholder="Limit">
-            </div>
-            <button type="button" id="btnClearFilters" class="btn btn-secondary btn-sm" style="height:32px;">
-                Clear All
-            </button>
-        </div>
-    </div>
 
     <div class="btn-row">
         <a href="{{ url_for('tables') }}" class="btn btn-secondary">← Tables</a>
-        <button type="submit" class="btn btn-success btn-lg" id="btnMigrate">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
-                <path stroke-linecap="round" stroke-linejoin="round"
-                    d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
-            </svg>
-            Start Migration
+        <button type="submit" class="btn btn-primary btn-lg">
+            Continue to Filters & Preview →
         </button>
     </div>
 </form>
@@ -378,499 +351,102 @@
             });
         });
 
-        // ── Coalesce check ────────────────────────────────────
-        const targetTable = '{{ target_table }}';
-        const migrationType = '{{ migration_type }}';
-        const spinner = document.getElementById('coalesceSpinner');
-        const msgEl = document.getElementById('coalesceMsg');
-        const actionsEl = document.getElementById('coalesceActions');
-        const hiddenInput = document.getElementById('coalesceFieldInput');
+        // ── Coalesce (Deduplication) Dynamic List and Config Serialization ──
+        (function () {
+            const chkEnable = document.getElementById('chkCoalesceEnable');
+            const detailsDiv = document.getElementById('coalesceSettingsDetails');
+            const fieldsListDiv = document.getElementById('coalesceFieldsList');
+            const configInput = document.getElementById('coalesceConfigInput');
 
-        function applyCoalesceMapping(fieldName) {
-            const cb = document.querySelector('input[name="include_sys_id"]');
-            if (cb && !cb.checked) cb.checked = true;
-            const sel = document.getElementById('map_sys_id');
-            if (sel) {
-                let optExists = false;
-                for (const o of sel.options) {
-                    if (o.value === fieldName) { optExists = true; break; }
+            function toggleDetails() {
+                detailsDiv.style.display = chkEnable.checked ? 'block' : 'none';
+                syncConfig();
+            }
+            chkEnable.addEventListener('change', toggleDetails);
+
+            const checkedFields = new Set();
+            checkedFields.add('u_legacy_sysid');
+            checkedFields.add('SN_Legacy_Id__c');
+
+            function syncConfig() {
+                const logicVal = document.querySelector('input[name="coalesce_logic"]:checked')?.value || 'AND';
+                const selected = [];
+                if (chkEnable.checked) {
+                    fieldsListDiv.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
+                        selected.push(cb.value);
+                    });
                 }
-                if (!optExists) {
-                    const opt = document.createElement('option');
-                    opt.value = fieldName;
-                    opt.textContent = fieldName;
-                    sel.appendChild(opt);
-                }
-                sel.value = fieldName;
-            }
-            hiddenInput.value = fieldName;
-        }
-
-        function showCoalesceFound(fieldName) {
-            spinner.style.display = 'none';
-            msgEl.className = 'coalesce-found';
-            msgEl.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px;display:inline;vertical-align:middle;margin-right:0.3rem;"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg> Dedup field (<strong>${fieldName}</strong>) found on target`;
-            applyCoalesceMapping(fieldName);
-        }
-
-        function showCoalesceMissing() {
-            spinner.style.display = 'none';
-            msgEl.className = 'coalesce-missing';
-            msgEl.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;display:inline;vertical-align:middle;margin-right:0.3rem;"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg> No dedup field found on target`;
-            actionsEl.style.display = 'block';
-            actionsEl.innerHTML = '';
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'btn btn-primary btn-sm';
-            btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg> Create u_legacy_sysid field`;
-            btn.addEventListener('click', createCoalesceField);
-            actionsEl.appendChild(btn);
-        }
-
-        function showExternalIdFound(fieldName) {
-            spinner.style.display = 'none';
-            msgEl.className = 'coalesce-found';
-            msgEl.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px;display:inline;vertical-align:middle;margin-right:0.3rem;"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg> External ID field (<strong>${fieldName}</strong>) found on target`;
-        }
-
-        function showExternalIdMissing() {
-            spinner.style.display = 'none';
-            msgEl.className = 'coalesce-missing';
-            msgEl.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;display:inline;vertical-align:middle;margin-right:0.3rem;"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg> SN_Legacy_Id__c External ID field not found — create it in Salesforce Setup`;
-        }
-
-        function createCoalesceField() {
-            actionsEl.innerHTML = '';
-            spinner.style.display = '';
-            msgEl.className = '';
-            msgEl.style.color = 'var(--text-secondary)';
-            msgEl.textContent = 'Creating u_legacy_sysid field…';
-
-            fetch('/api/create_coalesce', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ table: targetTable })
-            })
-                .then(r => r.json())
-                .then(() => {
-                    spinner.style.display = 'none';
-                    msgEl.className = 'coalesce-created';
-                    msgEl.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px;display:inline;vertical-align:middle;margin-right:0.3rem;"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg> Created u_legacy_sysid field`;
-                    applyCoalesceMapping('u_legacy_sysid');
-                })
-                .catch(err => {
-                    spinner.style.display = 'none';
-                    msgEl.className = 'coalesce-missing';
-                    msgEl.textContent = 'Failed to create field — ' + err.message;
-                });
-        }
-
-        const targetIsSF = ['sn_sf', 'sf_sf'].includes(migrationType);
-        const targetIsSN = ['sn_sn', 'sf_sn'].includes(migrationType);
-
-        if (targetIsSN) {
-            fetch('/api/check_coalesce?table=' + encodeURIComponent(targetTable))
-                .then(r => r.json())
-                .then(data => data.exists ? showCoalesceFound(data.field_name || 'u_legacy_sysid') : showCoalesceMissing())
-                .catch(err => {
-                    spinner.style.display = 'none';
-                    msgEl.textContent = 'Could not check — ' + err.message;
-                });
-        } else if (targetIsSF) {
-            fetch('/api/check_external_id?object=' + encodeURIComponent(targetTable))
-                .then(r => r.json())
-                .then(data => data.exists ? showExternalIdFound(data.field_name) : showExternalIdMissing())
-                .catch(err => {
-                    spinner.style.display = 'none';
-                    msgEl.textContent = 'Could not check — ' + err.message;
-                });
-        } else {
-            spinner.style.display = 'none';
-            msgEl.textContent = 'No dedup configuration required for this migration type.';
-        }
-    })();
-</script>
-
-<script id="source-fields-data" type="application/json">{{ source_fields | tojson | safe }}</script>
-<script>
-    // ── Filter Conditions Builder ──────────────────────────────────────
-    (function () {
-        const builder = document.getElementById('filterBuilder');
-        const hiddenInput = document.getElementById('filterConditionsInput');
-        const badge = document.getElementById('filterSummaryBadge');
-        const sourceFields = JSON.parse(document.getElementById('source-fields-data').textContent);
-
-        // conditions model: array of OR-groups, each group is array of AND-conditions
-        // [ [{field, op, value}, ...], [...] ]
-        let groups = [];
-        try {
-            groups = JSON.parse(hiddenInput.value || '[]');
-        } catch (e) {
-            groups = [];
-        }
-        if (groups.length === 0) {
-            groups = [[{ field: '', op: '', value: '' }]];
-        }
-
-        // SN/SF operators depend on migration type
-        const migrationType = '{{ migration_type }}';
-        const isSourceSF = ['sf_sf', 'sf_sn'].includes(migrationType);
-
-        const operators = isSourceSF
-            ? [
-                { val: '=', label: 'is' },
-                { val: '!=', label: 'is not' },
-                { val: '<', label: 'less than' },
-                { val: '>', label: 'greater than' },
-                { val: '<=', label: 'less or equal' },
-                { val: '>=', label: 'greater or equal' },
-                { val: 'LIKE', label: 'contains' },
-                { val: 'IN', label: 'in' },
-                { val: 'IS NULL', label: 'is empty' },
-                { val: 'IS NOT NULL', label: 'is not empty' },
-            ]
-            : [
-                { val: '=', label: 'is' },
-                { val: '!=', label: 'is not' },
-                { val: '<', label: 'less than' },
-                { val: '>', label: 'greater than' },
-                { val: '<=', label: 'less or equal' },
-                { val: '>=', label: 'greater or equal' },
-                { val: 'LIKE', label: 'contains' },
-                { val: 'STARTSWITH', label: 'starts with' },
-                { val: 'ENDSWITH', label: 'ends with' },
-                { val: 'IN', label: 'in' },
-                { val: 'EMPTY', label: 'is empty' },
-                { val: 'NOTEMPTY', label: 'is not empty' },
-            ];
-
-        const noValueOps = new Set(['EMPTY', 'NOTEMPTY', 'IS NULL', 'IS NOT NULL']);
-
-        function isBooleanField(fieldObj) {
-            if (!fieldObj) return false;
-            const type = (fieldObj.type || '').toLowerCase();
-            const hasBoolType = type === 'boolean' || type === 'bool' || type === 'true_false' || type === 'checkbox';
-            if (hasBoolType) return true;
-            
-            if (fieldObj.choices && fieldObj.choices.length === 2) {
-                const values = fieldObj.choices.map(c => String(c.value).toLowerCase());
-                const hasTrueLike = values.includes('true') || values.includes('yes') || values.includes('y') || values.includes('1');
-                const hasFalseLike = values.includes('false') || values.includes('no') || values.includes('n') || values.includes('0');
-                if (hasTrueLike && hasFalseLike) return true;
-            }
-            return false;
-        }
-
-        function getOperatorsForField(fieldObj) {
-            if (!fieldObj) return operators;
-            if (isBooleanField(fieldObj)) {
-                return [
-                    { val: '=', label: 'is' }
-                ];
-            }
-            const type = (fieldObj.type || '').toLowerCase();
-            const isNumeric = ['integer', 'long', 'double', 'decimal', 'float', 'number', 'int'].includes(type);
-            if (isNumeric) {
-                return isSourceSF
-                    ? [
-                        { val: '=', label: 'is' },
-                        { val: '!=', label: 'is not' },
-                        { val: '<', label: 'less than' },
-                        { val: '>', label: 'greater than' },
-                        { val: '<=', label: 'less or equal' },
-                        { val: '>=', label: 'greater or equal' },
-                        { val: 'IS NULL', label: 'is empty' },
-                        { val: 'IS NOT NULL', label: 'is not empty' }
-                    ]
-                    : [
-                        { val: '=', label: 'is' },
-                        { val: '!=', label: 'is not' },
-                        { val: '<', label: 'less than' },
-                        { val: '>', label: 'greater than' },
-                        { val: '<=', label: 'less or equal' },
-                        { val: '>=', label: 'greater or equal' },
-                        { val: 'EMPTY', label: 'is empty' },
-                        { val: 'NOTEMPTY', label: 'is not empty' }
-                    ];
-            }
-            return operators;
-        }
-
-        function renderFieldOptions(selectedField) {
-            return sourceFields.map(f =>
-                `<option value="${f.name}" ${f.name === selectedField ? 'selected' : ''}>${f.label || f.name}</option>`
-            ).join('');
-        }
-
-        function renderOpOptions(fieldName, selectedOp) {
-            const fieldObj = sourceFields.find(f => f.name === fieldName);
-            const fieldOps = getOperatorsForField(fieldObj);
-            return fieldOps.map(o =>
-                `<option value="${o.val}" ${o.val === selectedOp ? 'selected' : ''}>${o.label}</option>`
-            ).join('');
-        }
-
-        function syncHidden() {
-            // Filter out incomplete conditions for serialization
-            const cleaned = groups.map(g =>
-                g.filter(c => c.field && c.op)
-            ).filter(g => g.length > 0);
-            hiddenInput.value = JSON.stringify(cleaned);
-            
-            const total = cleaned.reduce((s, g) => s + g.length, 0);
-            badge.textContent = total === 0
-                ? 'All records'
-                : `${total} condition${total !== 1 ? 's' : ''} in ${cleaned.length} group${cleaned.length !== 1 ? 's' : ''}`;
-        }
-
-        function render() {
-            builder.innerHTML = '';
-            if (groups.length === 0) {
-                builder.innerHTML = `
-                    <div style="padding: 0.5rem 0; font-style: italic; color: var(--text-muted); display: flex; align-items: center; gap: 0.75rem;">
-                        No filter — all records will be migrated.
-                        <button type="button" id="btnFirstFilter" class="btn btn-secondary btn-sm" style="font-size:0.75rem; padding:0.25rem 0.6rem;">
-                            Add Filter
-                        </button>
-                    </div>
-                `;
-                document.getElementById('btnFirstFilter')?.addEventListener('click', () => {
-                    groups.push([{ field: '', op: '', value: '' }]);
-                    render();
-                });
-                syncHidden();
-                return;
-            }
-
-            groups.forEach((group, gi) => {
-                group.forEach((cond, ci) => {
-                    const isFirst = ci === 0;
-                    const rowEl = document.createElement('div');
-                    rowEl.className = 'filter-row';
-                    
-                    const prefixHtml = `<div class="filter-row-prefix">${isFirst ? '' : 'or'}</div>`;
-                    
-                    const noVal = noValueOps.has(cond.op);
-                    const fieldObj = sourceFields.find(f => f.name === cond.field);
-                    const isBool = isBooleanField(fieldObj);
-                    const hasChoices = fieldObj && fieldObj.choices && fieldObj.choices.length > 0;
-
-                    let valueHtml = '';
-                    if (noVal) {
-                        valueHtml = `<input type="text" class="fc-val" style="display:none" data-gi="${gi}" data-ci="${ci}">`;
-                    } else if (isBool) {
-                        cond.op = '='; // Force operator to '='
-                        if (hasChoices) {
-                            if (cond.value !== 'true' && cond.value !== 'false' && !fieldObj.choices.some(c => String(c.value) === cond.value)) {
-                                cond.value = fieldObj.choices[0].value;
-                            }
-                            let optionsHtml = '';
-                            fieldObj.choices.forEach(c => {
-                                optionsHtml += `<option value="${c.value}" ${cond.value === String(c.value) ? 'selected' : ''}>${c.label || c.value}</option>`;
-                            });
-                            valueHtml = `<select class="fc-val" data-gi="${gi}" data-ci="${ci}">${optionsHtml}</select>`;
-                        } else {
-                            if (cond.value !== 'true' && cond.value !== 'false') {
-                                cond.value = 'true';
-                            }
-                            valueHtml = `
-                                <select class="fc-val" data-gi="${gi}" data-ci="${ci}">
-                                    <option value="true" ${cond.value === 'true' ? 'selected' : ''}>True</option>
-                                    <option value="false" ${cond.value === 'false' ? 'selected' : ''}>False</option>
-                                </select>
-                            `;
-                        }
-                    } else if (hasChoices) {
-                        let optionsHtml = '<option value="">-- choose value --</option>';
-                        fieldObj.choices.forEach(c => {
-                            optionsHtml += `<option value="${c.value}" ${cond.value === String(c.value) ? 'selected' : ''}>${c.label || c.value}</option>`;
-                        });
-                        valueHtml = `<select class="fc-val" data-gi="${gi}" data-ci="${ci}">${optionsHtml}</select>`;
-                    } else {
-                        valueHtml = `
-                            <div class="fc-val-container" style="position: relative; display: inline-block; width: 140px;">
-                                <input type="text" class="fc-val" placeholder="-- value --" data-gi="${gi}" data-ci="${ci}"
-                                    value="${cond.value || ''}" autocomplete="off" style="width: 100%;">
-                                <div class="autocomplete-list"></div>
-                            </div>
-                        `;
-                    }
-
-                    const opStyle = isBool ? 'style="display:none;"' : '';
-                    const fieldsHtml = `
-                        <div class="filter-row-fields">
-                            <select class="fc-field" data-gi="${gi}" data-ci="${ci}">
-                                <option value="">-- choose field --</option>
-                                ${renderFieldOptions(cond.field)}
-                            </select>
-                            <select class="fc-op" data-gi="${gi}" data-ci="${ci}" ${opStyle}>
-                                <option value="">-- oper --</option>
-                                ${renderOpOptions(cond.field, cond.op)}
-                            </select>
-                            ${valueHtml}
-                        </div>
-                    `;
-                    
-                    let actionsHtml = '';
-                    if (isFirst) {
-                        actionsHtml = `
-                            <div class="filter-row-actions">
-                                <button type="button" class="btn-filter btn-filter--and" data-gi="${gi}" data-ci="${ci}">AND</button>
-                                <button type="button" class="btn-filter btn-filter--or" data-gi="${gi}" data-ci="${ci}">OR</button>
-                                <button type="button" class="btn-filter btn-filter--remove" data-gi="${gi}" data-ci="${ci}">X</button>
-                            </div>
-                        `;
-                    } else {
-                        actionsHtml = `
-                            <div class="filter-row-actions">
-                                <button type="button" class="btn-filter btn-filter--remove" data-gi="${gi}" data-ci="${ci}">X</button>
-                            </div>
-                        `;
-                    }
-
-                    rowEl.innerHTML = prefixHtml + fieldsHtml + actionsHtml;
-                    builder.appendChild(rowEl);
-
-                    rowEl.querySelector('.fc-field').value = cond.field;
-                    rowEl.querySelector('.fc-op').value = cond.op;
-                });
-            });
-
-            syncHidden();
-            attachEvents();
-        }
-
-        function attachEvents() {
-            builder.querySelectorAll('.fc-field').forEach(sel => {
-                sel.addEventListener('change', e => {
-                    const gi = +e.target.dataset.gi, ci = +e.target.dataset.ci;
-                    groups[gi][ci].field = e.target.value;
-                    groups[gi][ci].op = '';
-                    groups[gi][ci].value = '';
-                    render();
-                });
-            });
-
-            builder.querySelectorAll('.fc-op').forEach(sel => {
-                sel.addEventListener('change', e => {
-                    const gi = +e.target.dataset.gi, ci = +e.target.dataset.ci;
-                    groups[gi][ci].op = e.target.value;
-                    render();
-                });
-            });
-
-            // Standard Inputs/Selects fc-val
-            builder.querySelectorAll('select.fc-val').forEach(sel => {
-                sel.addEventListener('change', e => {
-                    const gi = +e.target.dataset.gi, ci = +e.target.dataset.ci;
-                    groups[gi][ci].value = e.target.value;
-                    syncHidden();
-                });
-            });
-
-            // Autocomplete Text Inputs
-            builder.querySelectorAll('.fc-val-container input.fc-val').forEach(inp => {
-                const gi = +inp.dataset.gi, ci = +inp.dataset.ci;
-                const cond = groups[gi][ci];
-                const fieldName = cond.field;
-                const container = inp.closest('.fc-val-container');
-                const listEl = container.querySelector('.autocomplete-list');
-
-                let debounceTimer;
-
-                const fetchSuggestions = () => {
-                    const q = inp.value.trim();
-                    if (!fieldName) {
-                        listEl.style.display = 'none';
-                        return;
-                    }
-                    
-                    fetch(`/api/autocomplete_values?field=${encodeURIComponent(fieldName)}&q=${encodeURIComponent(q)}`)
-                        .then(r => r.json())
-                        .then(data => {
-                            if (data && data.length > 0) {
-                                listEl.innerHTML = data.map(val => 
-                                    `<div class="autocomplete-item" data-value="${val}">${val}</div>`
-                                ).join('');
-                                listEl.style.display = 'block';
-                            } else {
-                                listEl.style.display = 'none';
-                            }
-                        })
-                        .catch(() => {
-                            listEl.style.display = 'none';
-                        });
+                const config = {
+                    enabled: chkEnable.checked && selected.length > 0,
+                    logic: logicVal,
+                    fields: selected
                 };
+                configInput.value = JSON.stringify(config);
+            }
 
-                inp.addEventListener('input', e => {
-                    groups[gi][ci].value = e.target.value;
-                    syncHidden();
+            document.querySelectorAll('input[name="coalesce_logic"]').forEach(r => {
+                r.addEventListener('change', syncConfig);
+            });
 
-                    clearTimeout(debounceTimer);
-                    debounceTimer = setTimeout(fetchSuggestions, 300);
-                });
-
-                inp.addEventListener('focus', () => {
-                    fetchSuggestions();
-                });
-
-                inp.addEventListener('blur', () => {
-                    setTimeout(() => {
-                        listEl.style.display = 'none';
-                    }, 200);
-                });
-
-                listEl.addEventListener('click', e => {
-                    const item = e.target.closest('.autocomplete-item');
-                    if (item) {
-                        const val = item.dataset.value;
-                        inp.value = val;
-                        groups[gi][ci].value = val;
-                        syncHidden();
-                        listEl.style.display = 'none';
+            function updateCoalesceFieldsList() {
+                const mappedFields = new Set();
+                document.querySelectorAll('.mapping-select').forEach(sel => {
+                    const row = sel.closest('tr');
+                    const cb = row.querySelector('.field-include-cb');
+                    if (cb && cb.checked && sel.value) {
+                        mappedFields.add(sel.value);
                     }
                 });
-            });
 
-            builder.querySelectorAll('.btn-filter--and').forEach(btn => {
-                btn.addEventListener('click', e => {
-                    groups.push([{ field: '', op: '', value: '' }]);
-                    render();
+                if (mappedFields.size === 0) {
+                    fieldsListDiv.innerHTML = '<div style="grid-column: 1/-1; text-align:center; color:var(--text-muted); font-style:italic; padding:0.5rem 0;">No mapped fields available yet. Map some fields above.</div>';
+                    syncConfig();
+                    return;
+                }
+
+                fieldsListDiv.innerHTML = '';
+                Array.from(mappedFields).sort().forEach(f => {
+                    const isChecked = checkedFields.has(f);
+                    const div = document.createElement('div');
+                    div.style.cssText = 'display:flex; align-items:center; gap:0.4rem; padding:0.25rem 0.4rem; border-radius:3px;';
+                    
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.value = f;
+                    cb.checked = isChecked;
+                    cb.id = 'dedup_chk_' + f;
+                    cb.style.cssText = 'width:14px; height:14px; cursor:pointer; margin:0;';
+                    cb.addEventListener('change', (e) => {
+                        if (e.target.checked) {
+                            checkedFields.add(f);
+                        } else {
+                            checkedFields.delete(f);
+                        }
+                        syncConfig();
+                    });
+
+                    const lbl = document.createElement('label');
+                    lbl.htmlFor = cb.id;
+                    lbl.style.cssText = 'cursor:pointer; font-size:0.8rem; color:var(--text-secondary); margin:0;';
+                    lbl.textContent = f;
+
+                    div.appendChild(cb);
+                    div.appendChild(lbl);
+                    fieldsListDiv.appendChild(div);
                 });
+
+                syncConfig();
+            }
+
+            document.querySelectorAll('.mapping-select, .field-include-cb').forEach(el => {
+                el.addEventListener('change', updateCoalesceFieldsList);
             });
 
-            builder.querySelectorAll('.btn-filter--or').forEach(btn => {
-                btn.addEventListener('click', e => {
-                    const gi = +e.target.dataset.gi;
-                    groups[gi].push({ field: '', op: '', value: '' });
-                    render();
-                });
-            });
+            updateCoalesceFieldsList();
+            toggleDetails();
 
-            builder.querySelectorAll('.btn-filter--remove').forEach(btn => {
-                btn.addEventListener('click', e => {
-                    const gi = +e.target.dataset.gi;
-                    const ci = +e.target.dataset.ci;
-                    if (ci === 0) {
-                        groups.splice(gi, 1);
-                    } else {
-                        groups[gi].splice(ci, 1);
-                    }
-                    render();
-                });
-            });
-        }
-
-        document.getElementById('btnClearFilters').addEventListener('click', () => {
-            groups = [];
-            render();
-        });
-
-        document.getElementById('fieldsForm').addEventListener('submit', () => {
-            syncHidden();
-        });
-
-        render();
+            document.getElementById('fieldsForm').addEventListener('submit', syncConfig);
+        })();
     })();
 </script>
 {% endblock %}
