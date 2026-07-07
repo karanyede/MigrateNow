@@ -60,7 +60,14 @@
                 <div class="conn-card conn-card--sn">
                     <div class="conn-card__top">
                         <div class="conn-card__info">
-                            <div class="conn-card__name" title="{{ c.name }}">{{ c.name }}</div>
+                            <div class="conn-card__name" title="{{ c.name }}" style="display:flex; align-items:center; flex-wrap:wrap; gap:0.25rem;">
+                                {{ c.name }}
+                                {% if session.get('role') == 'admin' %}
+                                <span style="font-size:0.65rem; font-weight:500; color:var(--cyan); background:rgba(0, 229, 255, 0.08); border:1px solid rgba(0, 229, 255, 0.15); padding:0.05rem 0.3rem; border-radius:4px; font-family:'JetBrains Mono',monospace;">
+                                    @{{ c.owner_name or 'system' }}
+                                </span>
+                                {% endif %}
+                            </div>
                             <div class="conn-card__subtext">{{ c.instance }}</div>
                             <div class="conn-card__subtext">{{ c.username }}</div>
                         </div>
@@ -134,7 +141,14 @@
                 <div class="conn-card conn-card--sf">
                     <div class="conn-card__top">
                         <div class="conn-card__info">
-                            <div class="conn-card__name" title="{{ c.name }}">{{ c.name }}</div>
+                            <div class="conn-card__name" title="{{ c.name }}" style="display:flex; align-items:center; flex-wrap:wrap; gap:0.25rem;">
+                                {{ c.name }}
+                                {% if session.get('role') == 'admin' %}
+                                <span style="font-size:0.65rem; font-weight:500; color:var(--cyan); background:rgba(0, 229, 255, 0.08); border:1px solid rgba(0, 229, 255, 0.15); padding:0.05rem 0.3rem; border-radius:4px; font-family:'JetBrains Mono',monospace;">
+                                    @{{ c.owner_name or 'system' }}
+                                </span>
+                                {% endif %}
+                            </div>
                             <div class="conn-card__subtext">{{ c.login_url | replace('https://','') }}</div>
                             <div class="conn-card__subtext">{{ c.username }}</div>
                         </div>

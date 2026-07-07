@@ -101,10 +101,196 @@ HISTORY_FILE      = Path(__file__).parent / "data" / "migration_history.json"
 CONNECTIONS_FILE  = Path(__file__).parent / "data" / "connections.json"
 CONFIGS_FILE      = Path(__file__).parent / "data" / "migration_configs.json"
 ROLLBACK_DB       = Path(__file__).parent / "data" / "rollback.db"
+USERS_FILE        = Path(__file__).parent / "data" / "users.json"
 
+
+# ─────────────────────────────────────────────────────────────────────
+# User Management Helpers
+# ─────────────────────────────────────────────────────────────────────
+
+import bcrypt as _bcrypt
+from functools import wraps
+import uuid as _uuid
+
+
+def _load_users() -> list[dict]:
+    """Load all user accounts from users.json."""
+    if USERS_FILE.exists():
+        try:
+            return json.loads(USERS_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return []
+    return []
+
+
+def _save_users(users: list[dict]) -> None:
+    """Persist user accounts to users.json."""
+    USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    USERS_FILE.write_text(
+        json.dumps(users, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
+def _find_user(username: str | None = None, user_id: str | None = None) -> dict | None:
+    """Find a user by username or ID."""
+    users = _load_users()
+    if username:
+        return next((u for u in users if u.get("username") == username), None)
+    if user_id:
+        return next((u for u in users if u.get("id") == user_id), None)
+    return None
+
+
+def _hash_password(plain: str) -> str:
+    """Return a bcrypt hash of the given plaintext password."""
+    return _bcrypt.hashpw(plain.encode("utf-8"), _bcrypt.gensalt()).decode("utf-8")
+
+
+def _check_password(plain: str, hashed: str) -> bool:
+    """Verify a plaintext password against a stored bcrypt hash."""
+    try:
+        return _bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
+
+
+def _current_user_id() -> str | None:
+    return session.get("user_id")
+
+
+def _current_role() -> str:
+    return session.get("role", "user")
+
+
+def _is_admin() -> bool:
+    return _current_role() == "admin"
+
+
+def _migrate_legacy_data() -> None:
+    """Tag all existing data entries (no user_id) with the first admin's ID.
+    Called once at startup after the first admin is created."""
+    users = _load_users()
+    if not users:
+        return
+    admin = next((u for u in users if u.get("role") == "admin"), users[0])
+    admin_id = admin["id"]
+    admin_name = admin.get("username", "admin")
+
+    changed = False
+    # History
+    if HISTORY_FILE.exists():
+        try:
+            history = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+            for entry in history:
+                if not entry.get("user_id"):
+                    entry["user_id"] = admin_id
+                    entry["username"] = admin_name
+                    changed = True
+            if changed:
+                HISTORY_FILE.write_text(json.dumps(history, indent=2, ensure_ascii=False), encoding="utf-8")
+                changed = False
+        except Exception:
+            pass
+    # Configs
+    if CONFIGS_FILE.exists():
+        try:
+            configs = json.loads(CONFIGS_FILE.read_text(encoding="utf-8"))
+            for c in configs:
+                if not c.get("user_id"):
+                    c["user_id"] = admin_id
+                    c["username"] = admin_name
+                    changed = True
+            if changed:
+                CONFIGS_FILE.write_text(json.dumps(configs, indent=2, ensure_ascii=False), encoding="utf-8")
+                changed = False
+        except Exception:
+            pass
+    # Connections
+    if CONNECTIONS_FILE.exists():
+        try:
+            conns = json.loads(CONNECTIONS_FILE.read_text(encoding="utf-8"))
+            for c in conns:
+                if not c.get("user_id"):
+                    c["user_id"] = admin_id
+                    c["owner_name"] = admin_name
+                    # keep username as login user if not set, else set owner_name
+                    if "username" not in c:
+                        c["username"] = admin_name
+                    changed = True
+            if changed:
+                CONNECTIONS_FILE.write_text(json.dumps(conns, indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
+
+# ── Auth decorators ──────────────────────────────────────────────────
+
+def login_required(f):
+    """Redirect to /login if no user is in session."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("user_id"):
+            return redirect(url_for("login_page"))
+        user = _find_user(user_id=session["user_id"])
+        if not user or not user.get("is_active", True) or user.get("is_deleted"):
+            session.clear()
+            flash("Your account has been deactivated. Contact your administrator.", "error")
+            return redirect(url_for("login_page"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def admin_required(f):
+    """Require admin role; otherwise redirect home with error flash."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if session.get("role") != "admin":
+            flash("Admin access required.", "error")
+            return redirect(url_for("home"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.context_processor
+def inject_user_profile():
+    """Inject profile details to templates dynamically without storing base64 in cookie-session."""
+    uid = session.get("user_id")
+    if uid:
+        user = _find_user(user_id=uid)
+        if user:
+            return {
+                "current_user_profile_pic": user.get("profile_pic"),
+                "current_user_display_name": user.get("display_name", user["username"]),
+            }
+    return {
+        "current_user_profile_pic": None,
+        "current_user_display_name": None,
+    }
+
+
+
+# ─────────────────────────────────────────────────────────────────────
+# History persistence
+# ─────────────────────────────────────────────────────────────────────
 
 def _load_history() -> list[dict]:
-    """Load migration history from JSON file."""
+    """Load migration history. Admins see all; regular users see only their own."""
+    if HISTORY_FILE.exists():
+        try:
+            all_history = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return []
+    else:
+        return []
+    if _is_admin():
+        return all_history
+    uid = _current_user_id()
+    return [h for h in all_history if h.get("user_id") == uid]
+
+
+def _load_all_history() -> list[dict]:
+    """Load ALL history regardless of user (admin utility)."""
     if HISTORY_FILE.exists():
         try:
             return json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
@@ -123,10 +309,14 @@ def _save_history(history: list[dict]) -> None:
 
 
 def _append_history(entry: dict) -> None:
-    """Append a migration result to history."""
-    history = _load_history()
+    """Append a migration result to history, tagging the current user."""
+    # Tag with current user (fall back gracefully if called before auth is set)
+    entry.setdefault("user_id", session.get("user_id", "system"))
+    entry.setdefault("username", session.get("username", "system"))
+    history = _load_all_history()
     history.insert(0, entry)  # newest first
     _save_history(history)
+
 
 
 def _clean_error_message(exc: Exception) -> str:
@@ -143,7 +333,22 @@ def _clean_error_message(exc: Exception) -> str:
 # ── Migration configs persistence ───────────────────────────────────
 
 def _load_configs() -> list[dict]:
-    """Load saved migration configurations from JSON file."""
+    """Load saved migration configs. Admins see all; regular users see only their own."""
+    if CONFIGS_FILE.exists():
+        try:
+            all_configs = json.loads(CONFIGS_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return []
+    else:
+        return []
+    if _is_admin():
+        return all_configs
+    uid = _current_user_id()
+    return [c for c in all_configs if c.get("user_id") == uid]
+
+
+def _load_all_configs() -> list[dict]:
+    """Load ALL configs regardless of user (admin utility)."""
     if CONFIGS_FILE.exists():
         try:
             return json.loads(CONFIGS_FILE.read_text(encoding="utf-8"))
@@ -286,15 +491,17 @@ def _save_migration_config_from_session() -> str:
             "orderby_field": orderby_field,
             "orderby_dir": orderby_dir,
             "created_at": now_iso,
-            "last_run_at": now_iso
+            "last_run_at": now_iso,
+            "user_id": session.get("user_id", "system"),
+            "username": session.get("username", "system"),
         }
-        
+
         if source_is_sn:
             new_config["source_instance"] = session.get("source_instance")
         else:
             new_config["sf_source_username"] = session.get("sf_source_username")
             new_config["sf_source_login_url"] = session.get("sf_source_login_url")
-        
+
         if target_is_sn:
             new_config["target_instance"] = session.get("target_instance")
         else:
@@ -302,6 +509,7 @@ def _save_migration_config_from_session() -> str:
             new_config["sf_target_login_url"] = session.get("sf_target_login_url")
 
         configs.insert(0, new_config)
+
 
     # Keep only top 15 configs
     _save_configs(configs[:15])
@@ -311,7 +519,22 @@ def _save_migration_config_from_session() -> str:
 # ── Connections persistence ──────────────────────────────────────────
 
 def _load_connections() -> list[dict]:
-    """Load saved connections from JSON file."""
+    """Load saved connections. Admins see all; regular users see only their own."""
+    if CONNECTIONS_FILE.exists():
+        try:
+            all_conns = json.loads(CONNECTIONS_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return []
+    else:
+        return []
+    if _is_admin():
+        return all_conns
+    uid = _current_user_id()
+    return [c for c in all_conns if c.get("user_id") == uid]
+
+
+def _load_all_connections() -> list[dict]:
+    """Load ALL connections regardless of user (admin utility)."""
     if CONNECTIONS_FILE.exists():
         try:
             return json.loads(CONNECTIONS_FILE.read_text(encoding="utf-8"))
@@ -441,17 +664,350 @@ def _auto_map_fields(
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Routes
+# Auth Routes — Login / Logout / Setup
+# ─────────────────────────────────────────────────────────────────────
+
+@app.route("/setup", methods=["GET", "POST"])
+def setup():
+    """First-run: create the initial admin account. Inaccessible if users exist."""
+    users = _load_users()
+    if users:
+        return redirect(url_for("login_page"))
+    if request.method == "POST":
+        display_name = request.form.get("display_name", "").strip()
+        username     = request.form.get("username", "").strip().lower()
+        email        = request.form.get("email", "").strip()
+        password     = request.form.get("password", "")
+        confirm      = request.form.get("confirm_password", "")
+        if not display_name or not username or not password:
+            flash("Display name, username and password are required.", "error")
+            return render_template("setup.html")
+        if password != confirm:
+            flash("Passwords do not match.", "error")
+            return render_template("setup.html")
+        new_user = {
+            "id": _uuid.uuid4().hex[:12],
+            "username": username,
+            "display_name": display_name,
+            "email": email,
+            "password_hash": _hash_password(password),
+            "role": "admin",
+            "is_active": True,
+            "is_deleted": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_by": "setup",
+            "last_login": None,
+            "must_change_password": False,
+        }
+        _save_users([new_user])
+        _migrate_legacy_data()
+        flash("Admin account created. Please log in.", "success")
+        return redirect(url_for("login_page"))
+    return render_template("setup.html")
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login_page():
+    """Login page."""
+    # Redirect to setup if no users exist
+    if not _load_users():
+        return redirect(url_for("setup"))
+    if session.get("user_id"):
+        return redirect(url_for("home"))
+    if request.method == "POST":
+        username = request.form.get("username", "").strip().lower()
+        password = request.form.get("password", "")
+        remember = request.form.get("remember") == "on"
+        user = _find_user(username=username)
+        if not user or not _check_password(password, user.get("password_hash", "")):
+            flash("Invalid username or password.", "error")
+            return render_template("login.html", username=username)
+        if not user.get("is_active", True) or user.get("is_deleted"):
+            flash("Your account has been deactivated. Contact your administrator.", "error")
+            return render_template("login.html", username=username)
+        # Set session
+        if remember:
+            from datetime import timedelta
+            app.permanent_session_lifetime = timedelta(days=30)
+            session.permanent = True
+        session["user_id"]      = user["id"]
+        session["username"]     = user["username"]
+        session["display_name"] = user.get("display_name", user["username"])
+        session["role"]         = user.get("role", "user")
+        # Update last_login
+        users = _load_users()
+        for u in users:
+            if u["id"] == user["id"]:
+                u["last_login"] = datetime.now(timezone.utc).isoformat()
+                break
+        _save_users(users)
+        if user.get("must_change_password"):
+            flash("Your password was reset by an admin. Please set a new password.", "warning")
+            return redirect(url_for("profile_page"))
+        return redirect(url_for("home"))
+    return render_template("login.html", username="")
+
+
+@app.route("/logout")
+def logout():
+    """Clear session and redirect to login."""
+    session.clear()
+    flash("You have been signed out.", "success")
+    return redirect(url_for("login_page"))
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Profile Route
+# ─────────────────────────────────────────────────────────────────────
+
+@app.route("/profile", methods=["GET", "POST"])
+@login_required
+def profile_page():
+    """User profile — view/edit account info and change password."""
+    users = _load_users()
+    user = next((u for u in users if u["id"] == session["user_id"]), None)
+    if not user:
+        session.clear()
+        return redirect(url_for("login_page"))
+
+    error = None
+    if request.method == "POST":
+        action = request.form.get("action", "update_profile")
+
+        if action == "update_profile":
+            display_name = request.form.get("display_name", "").strip()
+            email        = request.form.get("email", "").strip()
+            
+            # Profile picture upload
+            profile_pic = request.files.get("profile_pic")
+            if profile_pic and profile_pic.filename:
+                import base64
+                pic_data = profile_pic.read()
+                if len(pic_data) > 500 * 1024:
+                    error = "Profile picture must be under 500KB."
+                else:
+                    encoded = base64.b64encode(pic_data).decode("utf-8")
+                    mime = profile_pic.content_type or "image/png"
+                    user["profile_pic"] = f"data:{mime};base64,{encoded}"
+
+            if not display_name:
+                error = "Display name cannot be empty."
+                
+            if not error:
+                user["display_name"] = display_name
+                user["email"] = email
+                _save_users(users)
+                session["display_name"] = display_name
+                flash("Profile updated.", "success")
+                return redirect(url_for("profile_page"))
+
+        elif action == "change_password":
+            current_pw  = request.form.get("current_password", "")
+            new_pw      = request.form.get("new_password", "")
+            confirm_pw  = request.form.get("confirm_password", "")
+            if not user.get("must_change_password") and not _check_password(current_pw, user.get("password_hash", "")):
+                error = "Current password is incorrect."
+            elif not new_pw or len(new_pw) < 6:
+                error = "New password must be at least 6 characters."
+            elif new_pw != confirm_pw:
+                error = "Passwords do not match."
+            else:
+                user["password_hash"] = _hash_password(new_pw)
+                user["must_change_password"] = False
+                _save_users(users)
+                flash("Password changed successfully.", "success")
+                return redirect(url_for("home"))
+
+    # Stats for this user
+    all_history = _load_all_history()
+    my_history  = [h for h in all_history if h.get("user_id") == user["id"]]
+    my_records  = sum((h.get("inserts", 0) or 0) + (h.get("updates", 0) or 0) for h in my_history)
+    my_conns    = len([c for c in _load_all_connections() if c.get("user_id") == user["id"]])
+
+    return render_template(
+        "profile.html",
+        user=user,
+        error=error,
+        my_migrations=len(my_history),
+        my_records=my_records,
+        my_connections=my_conns,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Admin — User Management Routes
+# ─────────────────────────────────────────────────────────────────────
+
+@app.route("/admin/users")
+@login_required
+@admin_required
+def admin_users():
+    """Admin user management page."""
+    all_users = _load_users()
+    all_history = _load_all_history()
+    # Annotate each user with migration count
+    for u in all_users:
+        u["_migration_count"] = sum(1 for h in all_history if h.get("user_id") == u["id"])
+    total_users    = len([u for u in all_users if not u.get("is_deleted")])
+    active_users   = len([u for u in all_users if u.get("is_active") and not u.get("is_deleted")])
+    inactive_users = len([u for u in all_users if not u.get("is_active") and not u.get("is_deleted")])
+    admin_count    = len([u for u in all_users if u.get("role") == "admin" and not u.get("is_deleted")])
+    return render_template(
+        "admin_users.html",
+        users=all_users,
+        total_users=total_users,
+        active_users=active_users,
+        inactive_users=inactive_users,
+        admin_count=admin_count,
+    )
+
+
+@app.route("/admin/users/create", methods=["POST"])
+@login_required
+@admin_required
+def admin_create_user():
+    """Admin creates a new user account."""
+    users = _load_users()
+    username     = request.form.get("username", "").strip().lower()
+    display_name = request.form.get("display_name", "").strip()
+    email        = request.form.get("email", "").strip()
+    role         = request.form.get("role", "user")
+    password     = request.form.get("password", "").strip()
+    must_change  = request.form.get("must_change_password") == "on"
+
+    if not username or not display_name or not password:
+        flash("Username, display name, and password are required.", "error")
+        return redirect(url_for("admin_users"))
+    if _find_user(username=username):
+        flash(f'Username "{username}" is already taken.', "error")
+        return redirect(url_for("admin_users"))
+    if role not in ("admin", "user"):
+        role = "user"
+
+    new_user = {
+        "id": _uuid.uuid4().hex[:12],
+        "username": username,
+        "display_name": display_name,
+        "email": email,
+        "password_hash": _hash_password(password),
+        "role": role,
+        "is_active": True,
+        "is_deleted": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": session.get("username", "admin"),
+        "last_login": None,
+        "must_change_password": must_change,
+    }
+    users.append(new_user)
+    _save_users(users)
+    flash(f'User "{username}" created successfully.', "success")
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/<user_id>/toggle", methods=["POST"])
+@login_required
+@admin_required
+def admin_toggle_user(user_id: str):
+    """Toggle a user's active/inactive status."""
+    if user_id == session["user_id"]:
+        flash("You cannot deactivate your own account.", "error")
+        return redirect(url_for("admin_users"))
+    users = _load_users()
+    for u in users:
+        if u["id"] == user_id:
+            u["is_active"] = not u.get("is_active", True)
+            status = "activated" if u["is_active"] else "deactivated"
+            _save_users(users)
+            flash(f'User "{u["username"]}" {status}.', "success")
+            return redirect(url_for("admin_users"))
+    flash("User not found.", "error")
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/<user_id>/reset-password", methods=["POST"])
+@login_required
+@admin_required
+def admin_reset_password(user_id: str):
+    """Admin resets a user's password."""
+    new_password = request.form.get("new_password", "").strip()
+    if not new_password or len(new_password) < 6:
+        flash("Password must be at least 6 characters.", "error")
+        return redirect(url_for("admin_users"))
+    users = _load_users()
+    for u in users:
+        if u["id"] == user_id:
+            u["password_hash"] = _hash_password(new_password)
+            u["must_change_password"] = True
+            _save_users(users)
+            flash(f'Password for "{u["username"]}" has been reset. They will be prompted to change it on next login.', "success")
+            return redirect(url_for("admin_users"))
+    flash("User not found.", "error")
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/<user_id>/change-role", methods=["POST"])
+@login_required
+@admin_required
+def admin_change_role(user_id: str):
+    """Toggle user role between admin and user."""
+    if user_id == session["user_id"]:
+        flash("You cannot change your own role.", "error")
+        return redirect(url_for("admin_users"))
+    new_role = request.form.get("role", "user")
+    if new_role not in ("admin", "user"):
+        new_role = "user"
+    users = _load_users()
+    for u in users:
+        if u["id"] == user_id:
+            u["role"] = new_role
+            _save_users(users)
+            flash(f'Role for "{u["username"]}" changed to {new_role}.', "success")
+            return redirect(url_for("admin_users"))
+    flash("User not found.", "error")
+    return redirect(url_for("admin_users"))
+
+
+@app.route("/admin/users/<user_id>/delete", methods=["POST"])
+@login_required
+@admin_required
+def admin_delete_user(user_id: str):
+    """Soft-delete a user account (preserves their data)."""
+    if user_id == session["user_id"]:
+        flash("You cannot delete your own account.", "error")
+        return redirect(url_for("admin_users"))
+    users = _load_users()
+    for u in users:
+        if u["id"] == user_id:
+            u["is_deleted"] = True
+            u["is_active"] = False
+            _save_users(users)
+            flash(f'User "{u["username"]}" has been removed. Their data is preserved.', "success")
+            return redirect(url_for("admin_users"))
+    flash("User not found.", "error")
+    return redirect(url_for("admin_users"))
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Existing App Routes
 # ─────────────────────────────────────────────────────────────────────
 
 @app.route("/", methods=["GET"])
+@login_required
 def home():
     """Home page — MigrateNow dashboard with stats and recent history."""
     conns = _load_connections()
-    return render_template("home.html", history=_load_history(), connections_count=len(conns))
+    users = _load_users()
+    user_count = len([u for u in users if not u.get("is_deleted")])
+    return render_template(
+        "home.html",
+        history=_load_history(),
+        connections_count=len(conns),
+        user_count=user_count,
+    )
 
 
 @app.route("/select-type", methods=["POST"])
+@login_required
 def select_type():
     """Store migration_type in session and redirect to connect."""
     mt = request.form.get("migration_type", "sn_sn")
@@ -462,6 +1018,7 @@ def select_type():
 
 
 @app.route("/connect", methods=["GET"])
+@login_required
 def connect_page():
     """Render connect page with appropriate credential fields."""
     mt = session.get("migration_type", "sn_sn")
@@ -492,6 +1049,7 @@ def connect_page():
 
 
 @app.route("/connect", methods=["POST"])
+@login_required
 def connect():
     """Validate credentials and redirect to table selection."""
     source_platform = request.form.get("source_platform", "sn").strip()
@@ -626,6 +1184,7 @@ def connect():
 
 
 @app.route("/tables", methods=["GET"])
+@login_required
 def tables():
     """Show table/object selection page."""
     mt = session.get("migration_type", "sn_sn")
@@ -649,6 +1208,7 @@ def tables():
 
 
 @app.route("/tables", methods=["POST"])
+@login_required
 def select_tables():
     """Store selected tables and redirect to field mapping."""
     session["source_table"] = request.form["source_table"].strip()
@@ -660,6 +1220,7 @@ def select_tables():
 
 
 @app.route("/api/search_tables")
+@login_required
 def api_search_tables():
     """AJAX endpoint — search for SN tables by name on source or target."""
     q = request.args.get("q", "").strip()
@@ -678,6 +1239,7 @@ def api_search_tables():
 
 
 @app.route("/api/search_objects")
+@login_required
 def api_search_objects():
     """AJAX endpoint — search for SF objects by name on source or target."""
     q = request.args.get("q", "").strip()
@@ -696,6 +1258,7 @@ def api_search_objects():
 
 
 @app.route("/fields", methods=["GET"])
+@login_required
 def fields():
     """Show field-mapping UI."""
     src_table = session.get("source_table")
@@ -838,7 +1401,8 @@ def fields():
 
 
 @app.route("/fields", methods=["POST"])
-def map_fields():
+@login_required
+def fields_post():
     """Process the field mapping form and start migration."""
     source_fields = session.get("_source_fields", [])
     field_mapping: dict[str, str] = {}
@@ -974,6 +1538,7 @@ def _build_sf_where(filters: list) -> str:
 
 
 @app.route("/filters", methods=["GET"])
+@login_required
 def filters_page():
     """Show filters and data preview UI (Step 4 of 5)."""
     src_table = session.get("source_table")
@@ -1017,7 +1582,8 @@ def filters_page():
 
 
 @app.route("/filters", methods=["POST"])
-def save_filters():
+@login_required
+def filters_post():
     """Save filter conditions, limit, and orderby config into the session, then proceed to confirm."""
     filter_conditions = request.form.get("filter_conditions", "[]")
     try:
@@ -1051,6 +1617,7 @@ def save_filters():
 
 
 @app.route("/api/preview_data", methods=["POST"])
+@login_required
 def api_preview_data():
     """Run a query on the source instance using filter conditions, returning first 10 records and total match count."""
     try:
@@ -1138,6 +1705,7 @@ def api_preview_data():
 
 # ─────────────────────────────────────────────────────────────────────
 @app.route("/api/autocomplete_values")
+@login_required
 def api_autocomplete_values():
     """Fetch unique field values from source for auto-complete filter suggestions."""
     field = request.args.get("field", "").strip()
@@ -1190,6 +1758,7 @@ def api_autocomplete_values():
 
 
 @app.route("/api/check_coalesce")
+@login_required
 def api_check_coalesce():
     """Check if u_legacy_sysid field exists on the target table."""
     table = request.args.get("table", "").strip()
@@ -1214,6 +1783,7 @@ def api_check_coalesce():
 
 
 @app.route("/api/create_coalesce", methods=["POST"])
+@login_required
 def api_create_coalesce():
     """Create u_legacy_sysid field on the target SN table."""
     try:
@@ -1239,6 +1809,7 @@ def api_create_coalesce():
 
 
 @app.route("/api/check_external_id")
+@login_required
 def api_check_external_id():
     """Check if SN_Legacy_Id__c External ID field exists on SF target object."""
     obj = request.args.get("object", "").strip()
@@ -1277,6 +1848,7 @@ def api_check_external_id():
 # ─────────────────────────────────────────────────────────────────────
 
 @app.route("/history")
+@login_required
 def history():
     """Show migration history."""
     history_data = _load_history()
@@ -1296,6 +1868,7 @@ def history():
 
 
 @app.route("/history/<int:index>")
+@login_required
 def history_detail(index: int):
     """Show detail view for a single history entry."""
     all_history = _load_history()
@@ -1307,14 +1880,23 @@ def history_detail(index: int):
 
 
 @app.route("/api/clear_history", methods=["POST"])
+@login_required
 def api_clear_history():
-    """Clear all migration history."""
-    _save_history([])
+    """Clear migration history. Admin clears all; user clears only their own."""
+    if _is_admin():
+        _save_history([])
+    else:
+        uid = _current_user_id()
+        all_hist = _load_all_history()
+        remaining = [h for h in all_hist if h.get("user_id") != uid]
+        _save_history(remaining)
     flash("Migration history cleared.", "success")
     return redirect(url_for("history"))
 
 
+
 @app.route("/api/report/pdf", methods=["POST"])
+@login_required
 def api_report_pdf():
     """AJAX/POST endpoint — generates a custom PDF report from JSON migration stats."""
     try:
@@ -1338,12 +1920,14 @@ def api_report_pdf():
 # ─────────────────────────────────────────────────────────────────────
 
 @app.route("/connections", methods=["GET"])
+@login_required
 def connections_page():
     """Saved connections management page."""
     return render_template("connections.html", connections=_load_connections())
 
 
 @app.route("/connections", methods=["POST"])
+@login_required
 def connections_save():
     """Create a new saved connection."""
     conns = _load_connections()
@@ -1357,6 +1941,8 @@ def connections_save():
         "id":       _next_conn_id(conns),
         "name":     name,
         "platform": platform,   # 'sn' or 'sf'
+        "user_id":  session.get("user_id", "system"),
+        "owner_name": session.get("username", "system"),
     }
     if platform == "sn":
         conn["instance"] = request.form.get("sn_instance", "").strip()
@@ -1368,22 +1954,31 @@ def connections_save():
         conn["password"]       = request.form.get("sf_password", "")
         conn["security_token"] = request.form.get("sf_security_token", "")
 
-    conns.append(conn)
-    _save_connections(conns)
+    # Re-load ALL connections (not scoped) to append and save full file
+    all_conns = _load_all_connections()
+    all_conns.append(conn)
+    _save_connections(all_conns)
     flash(f'Connection "{name}" saved.', "success")
     return redirect(url_for("connections_page"))
 
 
 @app.route("/connections/<conn_id>/delete", methods=["POST"])
+@login_required
 def connections_delete(conn_id: str):
-    """Delete a saved connection by ID."""
-    conns = [c for c in _load_connections() if c.get("id") != conn_id]
-    _save_connections(conns)
+    """Delete a saved connection by ID (user can only delete own; admin can delete any)."""
+    uid = session.get("user_id")
+    all_conns = _load_all_connections()
+    if _is_admin():
+        new_conns = [c for c in all_conns if c.get("id") != conn_id]
+    else:
+        new_conns = [c for c in all_conns if not (c.get("id") == conn_id and c.get("user_id") == uid)]
+    _save_connections(new_conns)
     flash("Connection deleted.", "success")
     return redirect(url_for("connections_page"))
 
 
 @app.route("/api/connections")
+@login_required
 def api_connections():
     """Return saved connections as JSON (optionally filtered by platform)."""
     platform = request.args.get("platform", None)
@@ -1399,6 +1994,7 @@ def api_connections():
 
 
 @app.route("/api/test_connection", methods=["POST"])
+@login_required
 def api_test_connection():
     """Test connectivity for given credentials. Returns JSON {ok, message}.
     
@@ -1467,6 +2063,7 @@ def api_test_connection():
 
 
 @app.route("/connections/<conn_id>/edit", methods=["POST"])
+@login_required
 def connections_edit(conn_id: str):
     """Update an existing saved connection."""
     conns    = _load_connections()
@@ -1503,7 +2100,8 @@ def connections_edit(conn_id: str):
 
 
 @app.route("/migrate/repeat/<config_id>", methods=["POST"])
-def migrate_repeat(config_id):
+@login_required
+def migrate_repeat(config_id: str):
     """Load a saved config into session and redirect to confirm page."""
     configs = _load_configs()
     cfg = next((c for c in configs if c["id"] == config_id), None)
@@ -1589,6 +2187,7 @@ def migrate_repeat(config_id):
 
 
 @app.route("/migrate/confirm", methods=["GET", "POST"])
+@login_required
 def migrate_confirm():
     """Show confirmation summary before running a repeated/pre-configured migration."""
     if request.method == "POST":
@@ -1621,6 +2220,7 @@ def migrate_confirm():
 
 
 @app.route("/migrate", methods=["GET"])
+@login_required
 def migrate():
     """Render migration progress page and kick off background work."""
     mapping = session.get("field_mapping")
@@ -1679,6 +2279,7 @@ def migrate():
 
 
 @app.route("/migrate/stream")
+@login_required
 def migrate_stream():
     """SSE endpoint — streams progress events to the browser."""
 
@@ -1709,6 +2310,7 @@ def migrate_stream():
 
 
 @app.route("/migrate/pause", methods=["POST"])
+@login_required
 def migrate_pause():
     _pause_event.clear()
     logger.info("Migration paused by user request.")
@@ -1716,6 +2318,7 @@ def migrate_pause():
 
 
 @app.route("/migrate/resume", methods=["POST"])
+@login_required
 def migrate_resume():
     _pause_event.set()
     logger.info("Migration resumed by user request.")
@@ -2065,12 +2668,14 @@ def api_rollback_discard(job_id: str):
 # ═════════════════════════════════════════════════════════════════════
 
 @app.route("/data-ops")
+@login_required
 def data_ops_page():
     """Render the Data Ops manager page."""
     return render_template("data_ops.html", connections=_load_connections())
 
 
 @app.route("/api/data-ops/query", methods=["POST"])
+@login_required
 def api_data_ops_query():
     """Execute a query (SOQL for SF, table:query for SN) on a saved connection."""
     try:
@@ -2375,6 +2980,7 @@ def api_data_ops_delete():
 
 if __name__ == "__main__":
     logger.info("Starting SN Migration Tool on port %d", FLASK_PORT)
+    _migrate_legacy_data()         # tag existing legacy data with first admin ID
     _seed_configs_from_history()   # populate recent configs from history if not yet seeded
     app.run(
         host="0.0.0.0",

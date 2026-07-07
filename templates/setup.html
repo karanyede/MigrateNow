@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administrator Setup — MigrateNow</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/MigrateNow_Favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=12">
+    <style>
+        body {
+            background: var(--surface-0);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1.5rem;
+            font-family: 'Inter', sans-serif;
+            color: var(--text-primary);
+        }
+        .setup-container {
+            width: 100%;
+            max-width: 480px;
+            animation: fadeIn 0.4s var(--t-slow) both;
+        }
+        .setup-logo {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 2rem;
+        }
+        .setup-logo img {
+            height: 48px;
+            object-fit: contain;
+        }
+        .setup-card {
+            background: var(--surface-2);
+            border: 1px solid var(--border-moderate);
+            border-radius: var(--radius-md);
+            padding: 2.25rem 2rem;
+            box-shadow: var(--shadow-lg), var(--shadow-glow);
+        }
+        .setup-card__title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+            text-align: center;
+        }
+        .setup-card__subtitle {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            text-align: center;
+            margin-bottom: 1.75rem;
+        }
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+        .form-group label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 0.4rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .form-input {
+            width: 100%;
+            height: 40px;
+            padding: 0 1rem;
+            box-sizing: border-box;
+            background: var(--surface-3);
+            border: 1px solid var(--border-moderate);
+            border-radius: var(--radius-xs);
+            color: var(--text-primary);
+            font-size: 0.88rem;
+            outline: none;
+            transition: all var(--t-fast);
+        }
+        .form-input:focus {
+            border-color: var(--border-active);
+            box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+        }
+        .btn-submit {
+            width: 100%;
+            height: 42px;
+            background: var(--grad-brand);
+            border: none;
+            border-radius: var(--radius-xs);
+            color: #fff;
+            font-size: 0.88rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all var(--t-base);
+            box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+            margin-top: 0.75rem;
+        }
+        .btn-submit:hover {
+            opacity: 0.95;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(124, 58, 237, 0.4);
+        }
+        .btn-submit:active {
+            transform: translateY(0);
+        }
+        .alert-banner {
+            background: rgba(244, 67, 54, 0.1);
+            border: 1px solid rgba(244, 67, 54, 0.25);
+            color: #ff8a80;
+            border-radius: var(--radius-xs);
+            padding: 0.75rem 1rem;
+            font-size: 0.82rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            animation: shake 0.35s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-4px); }
+            40%, 80% { transform: translateX(4px); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="setup-container">
+        
+        <div class="setup-logo">
+            <img src="{{ url_for('static', filename='images/MigrateNow_Logo.png') }}" alt="MigrateNow">
+        </div>
+
+        <div class="setup-card">
+            <div class="setup-card__title">Create Administrator Account</div>
+            <div class="setup-card__subtitle">Deploying MigrateNow for the first time. Register the super admin user.</div>
+
+            <!-- Flash alerts -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert-banner">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;flex-shrink:0;margin-top:1px;">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z"/>
+                            </svg>
+                            <span>{{ message }}</span>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form method="POST" action="{{ url_for('setup') }}">
+                <div class="form-group">
+                    <label for="display_name">Display Name</label>
+                    <input type="text" id="display_name" name="display_name" class="form-input" placeholder="e.g. System Administrator" required autofocus>
+                </div>
+
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" class="form-input" placeholder="e.g. admin" required autocomplete="username">
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Email Address (Optional)</label>
+                    <input type="email" id="email" name="email" class="form-input" placeholder="e.g. admin@company.com" autocomplete="email">
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" class="form-input" placeholder="At least 6 characters" required autocomplete="new-password">
+                </div>
+
+                <div class="form-group">
+                    <label for="confirm_password">Confirm Password</label>
+                    <input type="password" id="confirm_password" name="confirm_password" class="form-input" placeholder="Re-enter password" required autocomplete="new-password">
+                </div>
+
+                <button type="submit" class="btn-submit">Initialize Platform</button>
+            </form>
+        </div>
+
+    </div>
+
+</body>
+</html>

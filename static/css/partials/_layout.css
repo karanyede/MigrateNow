@@ -88,7 +88,7 @@
 [data-sidebar="collapsed"] .sidebar-migration-section,
 [data-sidebar="collapsed"] .sidebar-logo__text,
 [data-sidebar="collapsed"] .sidebar-logo .logo-full {
-    display: none;
+    display: none !important;
 }
 
 [data-sidebar="collapsed"] .sidebar-logo .logo-icon {
@@ -98,6 +98,11 @@
 [data-sidebar="collapsed"] .sidebar-item {
     justify-content: center;
     padding: 0.65rem;
+}
+
+[data-sidebar="collapsed"] .sidebar-user {
+    justify-content: center !important;
+    padding: 0.85rem 0.5rem !important;
 }
 
 [data-sidebar="collapsed"] .sidebar-item__icon {

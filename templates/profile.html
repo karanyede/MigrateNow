@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% set current_step = 0 %}
+{% block title %}My Profile{% endblock %}
+{% block page_title %}My Profile{% endblock %}
+{% block breadcrumb %}<span>Settings</span> <span class="page-header__breadcrumb-sep">›</span> <span>Profile</span>{% endblock %}
+
+{% block content %}
+<div style="max-width:900px; margin:0 auto; display:flex; flex-direction:column; gap:1.5rem;">
+
+    {% if user.must_change_password %}
+    <div class="banner banner--warning" style="display:flex; align-items:center; gap:0.75rem; padding:1rem; background:rgba(255, 179, 0, 0.1); border:1px solid rgba(255, 179, 0, 0.25); border-radius:var(--radius-sm); color:#ffe082;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;flex-shrink:0;">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+        </svg>
+        <div>
+            <strong style="display:block; font-size:0.9rem;">Password Change Required</strong>
+            <span style="font-size:0.8rem; opacity:0.85;">An administrator has reset your password. You must change it below to activate all features.</span>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if error %}
+    <div class="banner banner--error" style="display:flex; align-items:center; gap:0.75rem; padding:1rem; background:rgba(244, 67, 54, 0.1); border:1px solid rgba(244, 67, 54, 0.25); border-radius:var(--radius-sm); color:#ffb4ab;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;flex-shrink:0;">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+        </svg>
+        <span style="font-size:0.85rem;">{{ error }}</span>
+    </div>
+    {% endif %}
+
+    <!-- 2 Column Layout: Settings (Left) & Stats Card (Right) -->
+    <div style="display:grid; grid-template-columns: 3fr 2fr; gap:1.5rem; align-items:start;">
+
+        <div style="display:flex; flex-direction:column; gap:1.5rem;">
+            <!-- Profile Info Card -->
+            <div class="card" style="margin-bottom:0;">
+                <div class="card__header">
+                    <div class="card__header-left">
+                        <div class="card__title">Account Details</div>
+                        <div class="card__subtitle">Update your personal display settings and contact information</div>
+                    </div>
+                </div>
+                <div style="padding:1.5rem;">
+                    <form method="POST" action="{{ url_for('profile_page') }}" enctype="multipart/form-data">
+                        <input type="hidden" name="action" value="update_profile">
+                        
+                        <!-- Profile Pic Preview/Upload Row -->
+                        <div style="display:flex; align-items:center; gap:1.25rem; margin-bottom:1.5rem; border-bottom:1px solid var(--border-hairline); padding-bottom:1.25rem;">
+                            <div style="width:64px; height:64px; border-radius:50%; background:var(--violet); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:1.5rem; box-shadow:var(--shadow-sm); overflow:hidden; flex-shrink:0;">
+                                {% if user.profile_pic %}
+                                    <img src="{{ user.profile_pic }}" style="width:100%; height:100%; object-fit:cover;" alt="Avatar">
+                                {% else %}
+                                    {{ user.display_name[0] | upper if user.display_name else 'U' }}
+                                {% endif %}
+                            </div>
+                            <div style="display:flex; flex-direction:column; gap:0.35rem;">
+                                <label style="display:block; font-size:0.75rem; font-weight:600; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.04em;">Profile Picture</label>
+                                <input type="file" name="profile_pic" accept="image/*" style="font-size:0.8rem; color:var(--text-muted);">
+                                <span style="font-size:0.68rem; color:var(--text-faint);">PNG, JPG or GIF up to 500KB</span>
+                            </div>
+                        </div>
+
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
+                            <div class="form-group">
+                                <label style="display:block; font-size:0.75rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.35rem; text-transform:uppercase;">Username</label>
+                                <input type="text" class="form-input" style="background:var(--surface-1); border-color:var(--border-hairline); color:var(--text-muted); cursor:not-allowed;" value="{{ user.username }}" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label style="display:block; font-size:0.75rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.35rem; text-transform:uppercase;">Role</label>
+                                <div style="display:flex; align-items:center; height:36px;">
+                                    <span class="status-badge status-badge--{{ 'success' if user.role == 'admin' else 'info' }}" style="font-size:0.72rem; text-transform:uppercase; font-weight:700;">
+                                        {{ user.role }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group" style="margin-bottom:1rem;">
+                            <label for="display_name" style="display:block; font-size:0.75rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.35rem; text-transform:uppercase;">Display Name</label>
+                            <input type="text" id="display_name" name="display_name" class="form-input" style="background:var(--surface-3);" value="{{ user.display_name }}" required>
+                        </div>
+                        <div class="form-group" style="margin-bottom:1.5rem;">
+                            <label for="email" style="display:block; font-size:0.75rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.35rem; text-transform:uppercase;">Email Address</label>
+                            <input type="email" id="email" name="email" class="form-input" style="background:var(--surface-3);" value="{{ user.email or '' }}" placeholder="optional@company.com">
+                        </div>
+                        <div style="display:flex; gap:0.5rem;">
+                            <button type="submit" class="btn btn-primary" style="height:36px; padding:0 1.25rem;">Save Details</button>
+                            <button type="button" class="btn btn-secondary" style="height:36px; padding:0 1.25rem;" onclick="toggleSecurity()">Change Password</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- User Statistics Card -->
+        <div class="card" style="margin-bottom:0; background: linear-gradient(145deg, var(--surface-2), rgba(0, 229, 255, 0.02)); border-color: var(--border-moderate);">
+            <div class="card__header">
+                <div class="card__header-left">
+                    <div class="card__title">Activity &amp; Metrics</div>
+                    <div class="card__subtitle">Your usage breakdown on MigrateNow</div>
+                </div>
+            </div>
+            <div style="padding:1.5rem; display:flex; flex-direction:column; gap:1.25rem;">
+                
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-hairline); padding-bottom:0.75rem;">
+                    <span style="font-size:0.8rem; color:var(--text-secondary);">Total Migrations Run</span>
+                    <strong style="font-size:1.1rem; color:var(--cyan); font-family:'JetBrains Mono',monospace;">{{ my_migrations }}</strong>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-hairline); padding-bottom:0.75rem;">
+                    <span style="font-size:0.8rem; color:var(--text-secondary);">Total Records Transferred</span>
+                    <strong style="font-size:1.1rem; color:var(--emerald); font-family:'JetBrains Mono',monospace;">{{ my_records | numberFormat }}</strong>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-hairline); padding-bottom:0.75rem;">
+                    <span style="font-size:0.8rem; color:var(--text-secondary);">Saved Connections Owned</span>
+                    <strong style="font-size:1.1rem; color:var(--amber); font-family:'JetBrains Mono',monospace;">{{ my_connections }}</strong>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-hairline); padding-bottom:0.75rem;">
+                    <span style="font-size:0.8rem; color:var(--text-secondary);">Account Created</span>
+                    <span style="font-size:0.75rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace;">
+                        {{ user.created_at[:10] if user.created_at else '—' }}
+                    </span>
+                </div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:0.8rem; color:var(--text-secondary);">Last Sign In</span>
+                    <span style="font-size:0.75rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace;">
+                        {{ user.last_login[:16].replace('T', ' ') if user.last_login else '—' }}
+                    </span>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Password Change Card (collapsible below) -->
+    <div id="securitySection" class="card" style="margin-top:1.5rem; display: {% if user.must_change_password or (request.form.get('action') == 'change_password' and error) %}block{% else %}none{% endif %};">
+        <div class="card__header">
+            <div class="card__header-left">
+                <div class="card__title">Security</div>
+                <div class="card__subtitle">Update your credentials to secure your workspace</div>
+            </div>
+        </div>
+        <div style="padding:1.5rem;">
+            <form method="POST" action="{{ url_for('profile_page') }}">
+                <input type="hidden" name="action" value="change_password">
+                
+                {% if not user.must_change_password %}
+                <div class="form-group" style="margin-bottom:1rem;">
+                    <label for="current_password" style="display:block; font-size:0.75rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.35rem; text-transform:uppercase;">Current Password</label>
+                    <input type="password" id="current_password" name="current_password" class="form-input" style="background:var(--surface-3);" placeholder="••••••••" required>
+                </div>
+                {% endif %}
+                
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.5rem;">
+                    <div class="form-group">
+                        <label for="new_password" style="display:block; font-size:0.75rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.35rem; text-transform:uppercase;">New Password</label>
+                        <input type="password" id="new_password" name="new_password" class="form-input" style="background:var(--surface-3);" placeholder="At least 6 characters" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="confirm_password" style="display:block; font-size:0.75rem; font-weight:600; color:var(--text-secondary); margin-bottom:0.35rem; text-transform:uppercase;">Confirm Password</label>
+                        <input type="password" id="confirm_password" name="confirm_password" class="form-input" style="background:var(--surface-3);" placeholder="At least 6 characters" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-success" style="height:36px; padding:0 1.25rem;">Change Password</button>
+            </form>
+        </div>
+    </div>
+
+
+</div>
+
+<script>
+function toggleSecurity() {
+    const sec = document.getElementById('securitySection');
+    if (sec.style.display === 'none') {
+        sec.style.display = 'block';
+        sec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+        sec.style.display = 'none';
+    }
+}
+</script>
+{% endblock %}

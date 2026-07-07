@@ -115,12 +115,34 @@ history %}
   {% endif %}
 </div>
 
-<!-- ── History Table (5 key columns, clickable rows) ──── -->
+{% set usernames = namespace(list=[]) %}
+{% for h in history %}
+  {% if h.username and h.username not in usernames.list %}
+    {% set usernames.list = usernames.list + [h.username] %}
+  {% endif %}
+{% endfor %}
+
+{% if session.get('role') == 'admin' and usernames.list | length > 1 %}
+<div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:1.5rem;">
+  <label for="userFilter" style="font-size:0.75rem; font-weight:600; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.04em;">Filter by Operator:</label>
+  <select id="userFilter" class="form-input" style="background:var(--surface-3); width:180px; height:32px; padding:0 0.5rem; font-size:0.8rem; border:1px solid var(--border-moderate); border-radius:var(--radius-xs); color:var(--text-primary); outline:none;">
+    <option value="all">All Users</option>
+    {% for u in usernames.list %}
+      <option value="{{ u }}">@{{ u }}</option>
+    {% endfor %}
+  </select>
+</div>
+{% endif %}
+
+<!-- ── History Table (clickable rows) ──── -->
 <div class="card" style="padding: 0; overflow: hidden">
   <table class="history-table" id="historyTable" style="width: 100%">
     <thead>
       <tr>
         <th style="padding: 0.85rem 1.25rem">Date</th>
+        {% if session.get('role') == 'admin' %}
+        <th>User</th>
+        {% endif %}
         <th>Type</th>
         <th>Source → Target</th>
         <th class="num-cell" style="padding-right: 1.25rem">Records</th>
@@ -135,6 +157,7 @@ history %}
       <tr
         class="history-row-clickable"
         data-status="{{ h.status }}"
+        data-username="{{ h.username or '' }}"
         data-href="{{ url_for('history_detail', index=loop.index0) }}"
         title="Click to view full migration details"
       >
@@ -152,6 +175,11 @@ history %}
             >{{ h.timestamp[11:19] }}</span
           >
         </td>
+        {% if session.get('role') == 'admin' %}
+        <td style="font-family:&quot;JetBrains Mono&quot;, monospace; font-size:0.8rem; color:var(--cyan);">
+          @{{ h.username or 'system' }}
+        </td>
+        {% endif %}
         <td>
           <span class="type-badge type-badge--{{ mt_val }}">
             {{ mt_val.replace('_', ' → ').upper() }}
@@ -609,23 +637,35 @@ history %}
       });
     });
 
-    // ── Filter tabs ───────────────────────────────────────────
+    // ── Filter tabs & User filter ─────────────────────────────
     const tabs = document.querySelectorAll(".history-filter-tab");
     const rows = document.querySelectorAll("#historyTable tbody tr");
+    const userFilter = document.getElementById("userFilter");
+
+    function applyFilters() {
+      const activeTab = document.querySelector(".history-filter-tab.active");
+      const statusFilter = activeTab ? activeTab.dataset.filter : "all";
+      const selectedUser = userFilter ? userFilter.value : "all";
+
+      rows.forEach(function (row) {
+        const matchesStatus = (statusFilter === "all" || row.dataset.status === statusFilter);
+        const matchesUser = (selectedUser === "all" || row.dataset.username === selectedUser);
+        row.style.display = (matchesStatus && matchesUser) ? "" : "none";
+      });
+    }
 
     tabs.forEach(function (tab) {
       tab.addEventListener("click", function () {
-        tabs.forEach(function (t) {
-          t.classList.remove("active");
-        });
+        tabs.forEach(function (t) { t.classList.remove("active"); });
         tab.classList.add("active");
-        const filter = tab.dataset.filter;
-        rows.forEach(function (row) {
-          row.style.display =
-            filter === "all" || row.dataset.status === filter ? "" : "none";
-        });
+        applyFilters();
       });
     });
+
+    if (userFilter) {
+      userFilter.addEventListener("change", applyFilters);
+    }
+
 
     // ── Rollback overlay logic ─────────────────────────────────
     let _hrmJobId = null;

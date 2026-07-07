@@ -31,6 +31,7 @@
                         '.sidebar-logo .logo-full { display: none !important; }',
                         '.sidebar-logo .logo-icon { display: block !important; }',
                         '.sidebar-item { justify-content: center !important; padding: 0.65rem !important; }',
+                        '.sidebar-user { justify-content: center !important; padding: 0.85rem 0.5rem !important; }',
                     ].join('\n');
                     document.head.appendChild(s);
                 }
@@ -124,13 +125,45 @@
                     </svg>
                     <span class="sidebar-item__label">History</span>
                 </a>
+
+                {% if session.get('role') == 'admin' %}
+                <a href="{{ url_for('admin_users') }}"
+                    class="sidebar-item {% if request.endpoint in ['admin_users', 'admin_create_user'] %}active{% endif %}"
+                    id="nav-admin-users" data-tooltip="User Management">
+                    <svg class="sidebar-item__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
+                    </svg>
+                    <span class="sidebar-item__label">User Management</span>
+                </a>
+                {% endif %}
             </div>
 
-            <!-- Footer -->
-            <div class="sidebar-footer">
-                <div>Built for Enterprise</div>
-                <div class="sidebar-footer__version">v2.0 · MigrateNow</div>
+            <!-- User profile footer -->
+            {% if session.get('user_id') %}
+            <div class="sidebar-user" style="border-top: 1px solid var(--border-hairline); padding: 0.85rem 1rem; display: flex; align-items: center; gap: 0.75rem; background: rgba(255,255,255,0.01); margin-top: auto;">
+                {% set display_name = session.get('display_name', 'User') %}
+                {% set initial = display_name[0] | upper if display_name else 'U' %}
+                {% set prof_pic = current_user_profile_pic %}
+                <a href="{{ url_for('profile_page') }}" style="text-decoration:none; flex-shrink:0;">
+                    <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--violet); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; box-shadow: var(--shadow-sm); overflow:hidden;">
+                        {% if prof_pic %}
+                            <img src="{{ prof_pic }}" style="width: 100%; height: 100%; object-fit: cover;" alt="Avatar">
+                        {% else %}
+                            {{ initial }}
+                        {% endif %}
+                    </div>
+                </a>
+                <div class="sidebar-item__label" style="display: flex; flex-direction: column; overflow: hidden; flex: 1;">
+                    <span style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">
+                        {{ display_name }}
+                    </span>
+                    <span style="font-size: 0.72rem; color: var(--text-muted); text-transform: capitalize; display: flex; align-items: center; gap: 0.3rem;">
+                        {{ session.get('role', 'user') }}
+                        <a href="{{ url_for('logout') }}" style="color: var(--rose); text-decoration: none; font-weight: 600; margin-left: auto;">Sign Out</a>
+                    </span>
+                </div>
             </div>
+            {% endif %}
         </nav>
 
         <!-- ══════════════════════════════════════════════════════
