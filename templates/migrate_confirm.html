@@ -4,9 +4,13 @@
 {% block title %}Confirm Migration{% endblock %}
 {% block page_title %}Confirm Migration{% endblock %}
 {% block breadcrumb %}
-    <span>New Migration</span>
+    <span>Migration</span>
     <span class="page-header__breadcrumb-sep">›</span>
-    <span>Step 4 of 4: Confirm</span>
+    <span>Step 5 of 5: Confirm</span>
+{% endblock %}
+
+{% block header_actions %}
+<a href="{{ url_for('connect_page') }}" class="btn btn-primary btn-sm">New Migration</a>
 {% endblock %}
 
 {% block content %}

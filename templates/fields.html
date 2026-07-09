@@ -4,13 +4,13 @@
 {% block title %}Field Mapping{% endblock %}
 {% block page_title %}Field Mapping{% endblock %}
 {% block breadcrumb %}
-<span>New Migration</span>
+<span>Migration</span>
 <span class="page-header__breadcrumb-sep">›</span>
-<span>Step 3: Map Fields</span>
+<span>Step 3 of 5: Map Fields</span>
 {% endblock %}
 
 {% block header_actions %}
-<a href="{{ url_for('tables') }}" class="btn btn-secondary btn-sm">← Tables</a>
+<a href="{{ url_for('connect_page') }}" class="btn btn-primary btn-sm">New Migration</a>
 {% endblock %}
 
 {% block content %}
@@ -49,9 +49,48 @@
     </div>
 </div>
 
-<form method="POST" action="{{ url_for('map_fields') }}" id="fieldsForm">
+{% set target_is_sf = migration_type in ['sn_sf', 'sf_sf'] %}
+
+<form method="POST" action="{{ url_for('fields_post') }}" id="fieldsForm">
     <input type="hidden" name="source_table" value="{{ source_table }}">
     <input type="hidden" name="target_table" value="{{ target_table }}">
+
+    <!-- ── Mandatory Fields Alert Card ───────────────────── -->
+    {% if mandatory_target_fields %}
+    <div class="card" id="mandatoryFieldsCard"
+        style="border-left: 4px solid var(--accent-amber); padding: 1.5rem; margin-bottom: 1.25rem;">
+        <div style="display:flex; align-items:center; gap:0.6rem; margin-bottom:0.75rem;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                style="width:20px;height:20px;color:var(--accent-amber);flex-shrink:0;">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+            <div class="card__title" style="margin-bottom:0; font-size:1rem;">Mandatory Target Fields</div>
+        </div>
+        <div class="card__subtitle" style="margin-bottom:1rem;">
+            The target {% if target_is_sf %}Salesforce object{% else %}ServiceNow table{% endif %} <strong
+                style="color:var(--cyan)">{{ target_table }}</strong> requires these fields to be mapped to prevent
+            migration failures.
+        </div>
+        <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:0.75rem;"
+            id="mandatoryStatusList">
+            {% for mf in mandatory_target_fields %}
+            <div class="mandatory-field-item" data-field-name="{{ mf.name }}"
+                style="display:flex; align-items:center; justify-content:space-between; background:var(--surface-3); border:1px solid var(--border-subtle); padding:0.6rem 0.8rem; border-radius:var(--radius-sm); font-size:0.85rem; transition: all var(--t-base);">
+                <div style="display:flex; flex-direction:column; gap:0.1rem;">
+                    <span style="font-weight:600; color:var(--text-primary); font-family:'JetBrains Mono',monospace;">{{
+                        mf.name }}</span>
+                    <span style="font-size:0.7rem; color:var(--text-muted);">{{ mf.label }} ({{ mf.type }})</span>
+                </div>
+                <span class="status-badge"
+                    style="font-weight:600; display:flex; align-items:center; gap:0.25rem; font-size:0.75rem;">
+                    <!-- Updated by JS -->
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
 
     <!-- ── Field Mapping Table Card ──────────────────────── -->
     <div class="card">
@@ -116,8 +155,10 @@
                 Select auto-matched
             </button>
             <label class="toggle-btn" for="csvUpload" style="cursor:pointer; margin-bottom:0;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="width:13px;height:13px">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                    style="width:13px;height:13px">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
                 </svg>
                 Upload CSV Mapping
             </label>
@@ -146,7 +187,8 @@
                         </td>
                         <!-- Source field -->
                         <td>
-                            <span class="field-label" style="font-weight: 600; color: var(--text-primary);">{{ sf.label or sf.name }}</span>
+                            <span class="field-label" style="font-weight: 600; color: var(--text-primary);">{{ sf.label
+                                or sf.name }}</span>
                             {% if sf.reference %}
                             <br><span
                                 style="color:var(--amber);font-size:0.7rem; font-family:'JetBrains Mono',monospace;">↗
@@ -185,7 +227,8 @@
     {% set target_is_sn = migration_type in ['sn_sn', 'sf_sn'] %}
 
     <div class="card" id="coalesceCard">
-        <div class="card__title" style="margin-bottom:0.2rem; display:flex; align-items:center; justify-content:space-between;">
+        <div class="card__title"
+            style="margin-bottom:0.2rem; display:flex; align-items:center; justify-content:space-between;">
             <div style="display:flex; align-items:center;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
                     style="width:16px;height:16px;display:inline;vertical-align:middle;margin-right:0.4rem;color:var(--cyan);">
@@ -194,18 +237,22 @@
                 </svg>
                 Deduplication Settings
             </div>
-            <label style="display:inline-flex; align-items:center; font-size:0.85rem; font-weight:600; color:var(--text-primary); cursor:pointer;">
-                <input type="checkbox" id="chkCoalesceEnable" style="margin-right:0.5rem; width:15px; height:15px;" checked>
+            <label
+                style="display:inline-flex; align-items:center; font-size:0.85rem; font-weight:600; color:var(--text-primary); cursor:pointer;">
+                <input type="checkbox" id="chkCoalesceEnable" style="margin-right:0.5rem; width:15px; height:15px;">
                 Enable Deduplication
             </label>
         </div>
         <div class="card__subtitle">
-            Configure how target records are matched to prevent duplicates. If disabled, or if no fields are selected, the migration will fallback to default primary key matching (sys_id or Id).
+            Configure how target records are matched to prevent duplicates. If disabled, or if no fields are selected,
+            the migration will fallback to default primary key matching (sys_id or Id).
         </div>
 
-        <div id="coalesceSettingsDetails" style="margin-top: 1rem; border-top: 1px solid var(--border-hairline); padding-top: 0.75rem;">
+        <div id="coalesceSettingsDetails"
+            style="margin-top: 1rem; border-top: 1px solid var(--border-hairline); padding-top: 0.75rem;">
             <!-- AND/OR logic selection -->
-            <div style="display:flex; align-items:center; gap:1.5rem; margin-bottom:1rem; font-size:0.85rem; color:var(--text-secondary);">
+            <div
+                style="display:flex; align-items:center; gap:1.5rem; margin-bottom:1rem; font-size:0.85rem; color:var(--text-secondary);">
                 <span>Match logic:</span>
                 <label style="display:inline-flex; align-items:center; cursor:pointer; gap:0.25rem;">
                     <input type="radio" name="coalesce_logic" value="AND" checked> ALL selected fields must match (AND)
@@ -216,9 +263,13 @@
             </div>
 
             <!-- List of mapped fields to choose from -->
-            <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0.4rem;">Select mapped target fields to match on:</div>
-            <div id="coalesceFieldsList" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:0.5rem; max-height:120px; overflow-y:auto; padding:0.5rem; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:var(--radius-sm);">
-                <div style="grid-column: 1/-1; text-align:center; color:var(--text-muted); font-style:italic; padding:0.5rem 0;">No mapped fields available yet. Map some fields above.</div>
+            <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:0.4rem;">Select mapped target fields to
+                match on:</div>
+            <div id="coalesceFieldsList"
+                style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:0.5rem; max-height:120px; overflow-y:auto; padding:0.5rem; background:rgba(255,255,255,0.02); border:1px solid var(--border-subtle); border-radius:var(--radius-sm);">
+                <div
+                    style="grid-column: 1/-1; text-align:center; color:var(--text-muted); font-style:italic; padding:0.5rem 0;">
+                    No mapped fields available yet. Map some fields above.</div>
             </div>
         </div>
 
@@ -290,7 +341,7 @@
                 for (let i = 0; i < lines.length; i++) {
                     const parts = lines[i].split(',').map(s => s.trim());
                     if (parts.length < 2) continue;
-                    
+
                     const sourceField = parts[0];
                     const targetField = parts[1];
 
@@ -318,7 +369,7 @@
                         }
                     }
                 }
-                
+
                 e.target.value = '';
                 if (appliedCount > 0) {
                     showToast(`Applied ${appliedCount} field mapping(s) from CSV.`, 'success');
@@ -409,7 +460,7 @@
                     const isChecked = checkedFields.has(f);
                     const div = document.createElement('div');
                     div.style.cssText = 'display:flex; align-items:center; gap:0.4rem; padding:0.25rem 0.4rem; border-radius:3px;';
-                    
+
                     const cb = document.createElement('input');
                     cb.type = 'checkbox';
                     cb.value = f;
@@ -438,15 +489,73 @@
                 syncConfig();
             }
 
-            document.querySelectorAll('.mapping-select, .field-include-cb').forEach(el => {
-                el.addEventListener('change', updateCoalesceFieldsList);
+            // ── Mandatory fields validation ──────────────────────
+            const mandatoryFields = [{% if mandatory_target_fields %}{% for mf in mandatory_target_fields %} "{{ mf.name }}", {% endfor %}{% endif %}];
+
+    function updateMandatoryFieldsStatus() {
+        if (mandatoryFields.length === 0) return;
+
+        const mappedTargetFields = new Set();
+        document.querySelectorAll('#mappingTable tbody tr').forEach(row => {
+            const cb = row.querySelector('.field-include-cb');
+            const sel = row.querySelector('.mapping-select');
+            if (cb && cb.checked && sel && sel.value) {
+                mappedTargetFields.add(sel.value);
+            }
+        });
+
+        mandatoryFields.forEach(name => {
+            const item = document.querySelector(`.mandatory-field-item[data-field-name="${name}"]`);
+            if (!item) return;
+
+            const badge = item.querySelector('.status-badge');
+            if (mappedTargetFields.has(name)) {
+                item.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+                item.style.background = 'rgba(16, 185, 129, 0.04)';
+                badge.style.color = 'var(--emerald)';
+                badge.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width:12px;height:12px;display:inline;"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg> Mapped`;
+            } else {
+                item.style.borderColor = 'rgba(239, 68, 68, 0.25)';
+                item.style.background = 'rgba(239, 68, 68, 0.04)';
+                badge.style.color = 'var(--rose)';
+                badge.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width:12px;height:12px;display:inline;"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg> Missing`;
+            }
+        });
+    }
+
+    document.querySelectorAll('.mapping-select, .field-include-cb').forEach(el => {
+        el.addEventListener('change', updateCoalesceFieldsList);
+        el.addEventListener('change', updateMandatoryFieldsStatus);
+    });
+
+    updateCoalesceFieldsList();
+    updateMandatoryFieldsStatus();
+    toggleDetails();
+
+    document.getElementById('fieldsForm').addEventListener('submit', (e) => {
+        syncConfig();
+
+        if (mandatoryFields.length > 0) {
+            const mappedTargetFields = new Set();
+            document.querySelectorAll('#mappingTable tbody tr').forEach(row => {
+                const cb = row.querySelector('.field-include-cb');
+                const sel = row.querySelector('.mapping-select');
+                if (cb && cb.checked && sel && sel.value) {
+                    mappedTargetFields.add(sel.value);
+                }
             });
 
-            updateCoalesceFieldsList();
-            toggleDetails();
-
-            document.getElementById('fieldsForm').addEventListener('submit', syncConfig);
-        })();
-    })();
+            const unmapped = mandatoryFields.filter(f => !mappedTargetFields.has(f));
+            if (unmapped.length > 0) {
+                const confirmMsg = `Warning: The following mandatory target fields are not mapped:\n- ${unmapped.join('\n- ')}\n\nUnmapped mandatory fields might cause the migration to fail. Are you sure you want to continue?`;
+                if (!confirm(confirmMsg)) {
+                    e.preventDefault();
+                    document.getElementById('mandatoryFieldsCard')?.scrollIntoView({ behavior: 'smooth' });
+                }
+            }
+        }
+    });
+        }) ();
+    }) ();
 </script>
 {% endblock %}

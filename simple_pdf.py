@@ -151,9 +151,23 @@ class SimplePDFWriter:
         cmds.append(draw_text("Configuration Details", 40, 705, size=12, color=(15, 23, 42)))
         cmds.append(draw_line(40, 698, 555, 698, color=(203, 213, 225), width=1))
         
+        def shorten_instance(instance_str):
+            if not instance_str or instance_str == "N/A":
+                return "N/A"
+            val = instance_str
+            if "://" in val:
+                val = val.split("://", 1)[1]
+            for suffix in [".develop.my.salesforce.com", ".my.salesforce.com", ".service-now.com", ".salesforce.com", ".com"]:
+                if val.lower().endswith(suffix):
+                    val = val[:-len(suffix)]
+                    break
+            if len(val) > 22:
+                val = val[:19] + "..."
+            return val
+
         config_rows = [
-            ("Source Instance:", str(r.get("source_instance", "N/A")), "Source Table:", str(r.get("source_table", "N/A"))),
-            ("Target Instance:", str(r.get("target_instance", "N/A")), "Target Table:", str(r.get("target_table", "N/A"))),
+            ("Source Instance:", shorten_instance(r.get("source_instance", "N/A")), "Source Table:", str(r.get("source_table", "N/A"))),
+            ("Target Instance:", shorten_instance(r.get("target_instance", "N/A")), "Target Table:", str(r.get("target_table", "N/A"))),
             ("Fetch Mode Used:", str(r.get("fetch_mode_used", "AUTO")).upper(), "Total Recs Processed:", f"{r.get('total_source_records', 0):,}")
         ]
         

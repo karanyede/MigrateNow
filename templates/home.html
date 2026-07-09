@@ -38,7 +38,7 @@
 {% set last_ts = history[0].timestamp[:10] if history else '--' %}
 
 <!-- ── Stats Row ──────────────────────────────────────────── -->
-<div class="dashboard-stats" style="margin-bottom:1.25rem; {% if session.get('role') == 'admin' %}grid-template-columns: repeat(5, 1fr);{% endif %}">
+<div class="dashboard-stats {% if session.get('role') == 'admin' %}dashboard-stats--admin{% endif %}" style="margin-bottom:1.25rem;">
 
     <div class="stat-summary-card">
         <div class="stat-summary-card__label">
@@ -96,7 +96,7 @@
     </div>
 
     {% if session.get('role') == 'admin' %}
-    <div class="stat-summary-card stat-summary-card--indigo" style="cursor:pointer;" onclick="location.href='{{ url_for('admin_users') }}'">
+    <a href="{{ url_for('admin_users') }}" class="stat-summary-card stat-summary-card--indigo" style="cursor:pointer; text-decoration:none; color:inherit; display:flex; flex-direction:column;">
         <div class="stat-summary-card__label">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="color:var(--violet);">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632A1.765 1.765 0 0 1 3 19.235Z" />
@@ -107,7 +107,7 @@
             {{ user_count }}
         </div>
         <div class="stat-summary-card__sub">Platform accounts</div>
-    </div>
+    </a>
     {% endif %}
 
 </div>
@@ -171,28 +171,33 @@
                 {% else %}
                     <!-- Success arc (emerald) -->
                     {% if s_dash > 0 %}
-                    <circle cx="80" cy="80" r="52" fill="none" stroke="var(--emerald)" stroke-width="18"
+                    <circle class="donut-slice" cx="80" cy="80" r="52" fill="none" stroke="var(--emerald)" stroke-width="18"
                         stroke-dasharray="{{ s_dash }} {{ C - s_dash }}" stroke-dashoffset="{{ s_off }}"
-                        style="transition:stroke-dasharray 1s ease;"/>
+                        data-count="{{ success_count.val }}" data-label="Success"
+                        style="transition:stroke-dasharray 1s ease, stroke-width 0.2s ease, opacity 0.2s ease; cursor:pointer;"/>
                     {% endif %}
                     <!-- Partial arc (amber) -->
                     {% if p_dash > 0 %}
-                    <circle cx="80" cy="80" r="52" fill="none" stroke="var(--amber)" stroke-width="18"
+                    <circle class="donut-slice" cx="80" cy="80" r="52" fill="none" stroke="var(--amber)" stroke-width="18"
                         stroke-dasharray="{{ p_dash }} {{ C - p_dash }}" stroke-dashoffset="{{ p_off }}"
-                        style="transition:stroke-dasharray 1s ease;"/>
+                        data-count="{{ partial_count.val }}" data-label="Partial"
+                        style="transition:stroke-dasharray 1s ease, stroke-width 0.2s ease, opacity 0.2s ease; cursor:pointer;"/>
                     {% endif %}
                     <!-- Failed arc (rose) -->
                     {% if f_dash > 0 %}
-                    <circle cx="80" cy="80" r="52" fill="none" stroke="var(--rose)" stroke-width="18"
+                    <circle class="donut-slice" cx="80" cy="80" r="52" fill="none" stroke="var(--rose)" stroke-width="18"
                         stroke-dasharray="{{ f_dash }} {{ C - f_dash }}" stroke-dashoffset="{{ f_off }}"
-                        style="transition:stroke-dasharray 1s ease;"/>
+                        data-count="{{ failed_count.val }}" data-label="Failed"
+                        style="transition:stroke-dasharray 1s ease, stroke-width 0.2s ease, opacity 0.2s ease; cursor:pointer;"/>
                     {% endif %}
                 {% endif %}
                 <!-- Centre label -->
                 <text x="80" y="75" text-anchor="middle" font-size="22" font-weight="700"
-                      fill="var(--text-normal)" font-family="'Inter',sans-serif">{{ total_migrations }}</text>
+                      fill="var(--text-primary)" font-family="'Inter',sans-serif" id="donutCount"
+                      style="transition:fill 0.2s ease;">{{ total_migrations }}</text>
                 <text x="80" y="93" text-anchor="middle" font-size="10"
-                      fill="var(--text-muted)" font-family="'Inter',sans-serif">Total</text>
+                      fill="var(--text-muted)" font-family="'Inter',sans-serif" id="donutLabel"
+                      style="transition:fill 0.2s ease;">Total</text>
             </svg>
 
             <!-- Legend -->
@@ -259,18 +264,20 @@
                     {% endif %}
                     {% set cnt_h = ((cnt / max_c) * 130) | round | int %}
                     {% set vol_h = ((vol / max_v) * 130) | round | int %}
+                    {% set bar_cnt_h = cnt_h if cnt_h > 0 else 2 %}
+                    {% set bar_vol_h = vol_h if vol_h > 0 else 2 %}
                     <div style="display:flex; flex-direction:column; align-items:center; gap:0.3rem; flex:1;">
                         <!-- Values -->
                         <div style="display:flex; gap:0.3rem; align-items:flex-end; height:130px;">
                             <!-- Count bar -->
-                            <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
-                                <span style="font-size:0.65rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace;">{{ cnt }}</span>
-                                <div style="width:22px; height:{{ cnt_h if cnt_h > 0 else 2 }}px; background:var(--cyan); border-radius:3px 3px 0 0; transition: height 0.8s ease; min-height:2px;"></div>
+                            <div class="chart-bar-container" style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+                                <span class="bar-val" style="font-size:0.65rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace; transition: color 0.2s ease, font-weight 0.2s ease;">{{ cnt }}</span>
+                                <div class="chart-bar bar-count" data-height="{{ bar_cnt_h }}px" style="width:22px; background:var(--cyan); border-radius:3px 3px 0 0; transition: height 0.8s ease, transform 0.2s ease, filter 0.2s ease; min-height:2px; transform-origin: bottom; cursor:pointer;"></div>
                             </div>
                             <!-- Volume bar -->
-                            <div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
-                                <span style="font-size:0.65rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace;">{{ vol }}</span>
-                                <div style="width:22px; height:{{ vol_h if vol_h > 0 else 2 }}px; background:var(--amber); border-radius:3px 3px 0 0; transition: height 0.8s ease; min-height:2px;"></div>
+                            <div class="chart-bar-container" style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+                                <span class="bar-val" style="font-size:0.65rem; color:var(--text-muted); font-family:'JetBrains Mono',monospace; transition: color 0.2s ease, font-weight 0.2s ease;">{{ vol }}</span>
+                                <div class="chart-bar bar-volume" data-height="{{ bar_vol_h }}px" style="width:22px; background:var(--amber); border-radius:3px 3px 0 0; transition: height 0.8s ease, transform 0.2s ease, filter 0.2s ease; min-height:2px; transform-origin: bottom; cursor:pointer;"></div>
                             </div>
                         </div>
                         <!-- X-axis label -->
@@ -360,5 +367,78 @@
     </div>
     {% endif %}
 </div>
+
+<style>
+.donut-slice {
+    transition: stroke-width 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.22s ease;
+}
+.donut-slice:hover {
+    stroke-width: 23px !important;
+    opacity: 0.95;
+}
+
+/* Grouped Bar Chart Hover effects */
+.chart-bar-container {
+    cursor: pointer;
+}
+.chart-bar-container:hover .chart-bar {
+    transform: scaleX(1.18);
+}
+.chart-bar-container:hover .bar-count {
+    filter: brightness(1.25) drop-shadow(0 0 8px rgba(6, 182, 212, 0.55));
+}
+.chart-bar-container:hover .bar-volume {
+    filter: brightness(1.25) drop-shadow(0 0 8px rgba(245, 158, 11, 0.55));
+}
+.chart-bar-container:hover .bar-val {
+    color: var(--text-primary) !important;
+    font-weight: 700;
+}
+</style>
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    // Apply dynamic heights to chart bars to avoid inline style parser warnings
+    document.querySelectorAll(".chart-bar[data-height]").forEach(bar => {
+        bar.style.height = bar.getAttribute("data-height");
+    });
+
+    const donutCount = document.getElementById("donutCount");
+    const donutLabel = document.getElementById("donutLabel");
+    if (!donutCount || !donutLabel) return;
+
+    const originalCount = donutCount.textContent;
+    const originalLabel = donutLabel.textContent;
+
+    document.querySelectorAll(".donut-slice").forEach(slice => {
+        slice.addEventListener("mouseenter", () => {
+            const count = slice.getAttribute("data-count");
+            const label = slice.getAttribute("data-label");
+            donutCount.textContent = count;
+            donutLabel.textContent = label;
+            
+            if (label === "Success") {
+                donutCount.style.fill = "var(--emerald)";
+                donutLabel.style.fill = "var(--emerald)";
+            } else if (label === "Partial") {
+                donutCount.style.fill = "var(--amber)";
+                donutLabel.style.fill = "var(--amber)";
+            } else if (label === "Failed") {
+                donutCount.style.fill = "var(--rose)";
+                donutLabel.style.fill = "var(--rose)";
+            }
+        });
+
+        slice.addEventListener("mouseleave", () => {
+            donutCount.textContent = originalCount;
+            donutLabel.textContent = originalLabel;
+            donutCount.style.fill = "var(--text-primary)";
+            donutLabel.style.fill = "var(--text-muted)";
+        });
+    });
+});
+</script>
+{% endblock %}
 
 {% endblock %}

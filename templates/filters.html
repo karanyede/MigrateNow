@@ -4,16 +4,45 @@
 {% block title %}Filters & Preview{% endblock %}
 {% block page_title %}Filters & Preview{% endblock %}
 {% block breadcrumb %}
-    <span>New Migration</span>
-    <span class="page-header__breadcrumb-sep">›</span>
-    <span>Step 4: Filters & Preview</span>
+<span>Migration</span>
+<span class="page-header__breadcrumb-sep">›</span>
+<span>Step 4 of 5: Filters & Preview</span>
 {% endblock %}
 
 {% block header_actions %}
-<a href="{{ url_for('fields') }}" class="btn btn-secondary btn-sm">← Back to Fields</a>
+<a href="{{ url_for('connect_page') }}" class="btn btn-primary btn-sm">New Migration</a>
 {% endblock %}
 
 {% block content %}
+<style>
+    #tblPreview td {
+        max-width: 150px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        height: 38px;
+        padding: 0.45rem 0.75rem;
+        vertical-align: middle;
+        border-bottom: 1px solid var(--border-hairline);
+    }
+
+    #tblPreview th {
+        max-width: 150px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding: 0.6rem 0.75rem;
+        background: var(--surface-2);
+        color: var(--text-secondary);
+        font-weight: 600;
+        font-size: 0.75rem;
+        border-bottom: 1px solid var(--border-hairline);
+    }
+
+    #tblPreview tr:hover td {
+        background: var(--surface-3);
+    }
+</style>
 
 {# ── Wizard Flow Bar ─────────────────────────────────────── #}
 <div class="wizard-flow-bar">
@@ -56,9 +85,8 @@
 
     <input type="hidden" name="filter_conditions" id="filterConditionsInput" value="[]">
 
-    <!-- ── Unified Filter & Preview Panel ── -->
-    <div class="card" style="padding:0; overflow:hidden;">
-
+    <!-- ── Card 1: Filter Configurations ── -->
+    <div class="card" style="padding:0; overflow:hidden; margin-bottom:1.25rem;">
         <!-- Panel Header -->
         <div style="display:flex; align-items:center; justify-content:space-between; padding:0.9rem 1.1rem; border-bottom:1px solid var(--border-hairline);">
             <div style="display:flex; align-items:center; gap:0.75rem;">
@@ -67,14 +95,13 @@
                     <path stroke-linecap="round" stroke-linejoin="round"
                         d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
                 </svg>
-                <span style="font-weight:600; font-size:0.88rem; color:var(--text-normal);">Filters &amp; Preview</span>
-                <span id="filterSummaryBadge" style="font-size:0.7rem; color:var(--text-muted); background:var(--bg-lighter); padding:0.15rem 0.5rem; border-radius:10px; margin-left:0.25rem;">All records</span>
+                <span style="font-weight:600; font-size:0.88rem; color:var(--text-primary);">Filter Configurations</span>
+                <span id="filterSummaryBadge"
+                    style="font-size:0.7rem; color:var(--text-muted); background:var(--bg-lighter); padding:0.15rem 0.5rem; border-radius:10px; margin-left:0.25rem;">All records</span>
             </div>
-            <div style="display:flex; align-items:center; gap:0.5rem;">
-                <button type="button" id="btnClearFilters" class="btn btn-secondary btn-sm" style="height:28px; font-size:0.75rem; padding:0 0.7rem;">Clear</button>
-                <button type="button" class="btn btn-secondary btn-sm" id="btnPreviewData" onclick="previewData()" style="height:28px; font-size:0.75rem; padding:0 0.7rem;">
-                    ⚡ Preview
-                </button>
+            <div>
+                <button type="button" id="btnClearFilters" class="btn btn-secondary btn-sm"
+                    style="height:28px; font-size:0.75rem; padding:0 0.7rem;">Clear</button>
             </div>
         </div>
 
@@ -83,33 +110,61 @@
 
         <!-- Section 2: Options Row (Limit + Order By inline) -->
         <div style="display:flex; align-items:center; flex-wrap:wrap; gap:0.75rem; padding:0.7rem 1.1rem; border-top:1px solid var(--border-hairline); background:var(--bg-panel);">
-            <span style="font-size:0.72rem; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; flex-shrink:0;">Options</span>
+            <div style="width: 28px; flex-shrink: 0;"></div>
+
             <div style="display:flex; align-items:center; gap:0.4rem; flex-shrink:0;">
-                <label style="font-size:0.75rem; color:var(--text-secondary); white-space:nowrap;">Limit</label>
+                <label style="font-size:0.75rem; font-weight:600; color:var(--text-secondary); white-space:nowrap;">Limit</label>
                 <input type="number" id="filterLimit" name="limit" class="form-input"
                     style="background:var(--surface-3); width:90px; height:28px; font-size:0.8rem; padding:0 0.5rem;"
                     min="1" placeholder="No limit" value="{{ limit or '' }}">
             </div>
-            <div style="width:1px; height:20px; background:var(--border-hairline); flex-shrink:0;"></div>
+
+            <div style="width: 1.5rem; flex-shrink: 0;"></div>
+
             <div style="display:flex; align-items:center; gap:0.4rem; flex-shrink:0;">
-                <label style="font-size:0.75rem; color:var(--text-secondary); white-space:nowrap;">Order By</label>
-                <select name="orderby_field" class="form-input" style="background:var(--surface-3); height:28px; font-size:0.8rem; padding:0 0.4rem; width:auto; max-width:180px;">
+                <label style="font-size:0.75rem; font-weight:600; color:var(--text-secondary); white-space:nowrap;">Order By</label>
+                <select name="orderby_field" class="form-input"
+                    style="background:var(--surface-3); height:28px; font-size:0.8rem; padding:0 0.4rem; width:auto; max-width:180px;">
                     <option value="">-- No sorting --</option>
                     {% for f in source_fields %}
-                    <option value="{{ f.name }}" {% if orderby_field == f.name %}selected{% endif %}>{{ f.label or f.name }}</option>
+                    <option value="{{ f.name }}" {% if orderby_field==f.name %}selected{% endif %}>{{ f.label or f.name }}</option>
                     {% endfor %}
                 </select>
-                <select name="orderby_dir" class="form-input" style="background:var(--surface-3); height:28px; font-size:0.8rem; padding:0 0.4rem; width:70px;">
-                    <option value="ASC" {% if orderby_dir == 'ASC' %}selected{% endif %}>ASC</option>
-                    <option value="DESC" {% if orderby_dir == 'DESC' %}selected{% endif %}>DESC</option>
+                <select name="orderby_dir" class="form-input"
+                    style="background:var(--surface-3); height:28px; font-size:0.8rem; padding:0 0.4rem; width:70px;">
+                    <option value="ASC" {% if orderby_dir=='ASC' %}selected{% endif %}>ASC</option>
+                    <option value="DESC" {% if orderby_dir=='DESC' %}selected{% endif %}>DESC</option>
                 </select>
             </div>
         </div>
+    </div>
 
-        <!-- Section 3: Preview Results (inline, below options) -->
-        <div style="border-top:1px solid var(--border-hairline);">
+    <!-- ── Card 2: Live Data Preview ── -->
+    <div class="card" style="padding:0; overflow:hidden;">
+        <!-- Header -->
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:0.9rem 1.1rem; border-bottom:1px solid var(--border-hairline);">
+            <div style="display:flex; align-items:center; gap:0.75rem;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+                    style="width:15px;height:15px;color:var(--cyan); flex-shrink:0;">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                </svg>
+                <span style="font-weight:600; font-size:0.88rem; color:var(--text-primary);">Live Data Preview</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+                <span id="previewLoadingIndicator"
+                    style="display:none; font-size:0.75rem; color:var(--cyan); font-weight:600; margin-right:0.5rem;">Loading live preview...</span>
+                <button type="button" class="btn btn-secondary btn-sm" id="btnPreviewData" onclick="previewData()"
+                    style="display:none;"></button>
+            </div>
+        </div>
+
+        <!-- Preview Results block -->
+        <div>
             <!-- Preview count bar -->
-            <div id="previewStatus" style="display:none; padding:0.45rem 1.1rem; background:rgba(6,182,212,0.05); border-bottom:1px solid var(--border-hairline); font-size:0.78rem;">
+            <div id="previewStatus"
+                style="display:none; padding:0.45rem 1.1rem; background:rgba(6,182,212,0.05); border-bottom:1px solid var(--border-hairline); font-size:0.78rem;">
                 <span style="color:var(--text-muted);">Matching records:</span>
                 <strong id="previewTotalCount" style="color:var(--cyan); margin-left:0.3rem;">0</strong>
                 <span style="color:var(--text-muted); margin-left:0.5rem; font-size:0.7rem;">(showing first 10)</span>
@@ -124,12 +179,12 @@
                 </table>
             </div>
             <!-- Empty / idle state -->
-            <div id="previewEmptyState" style="text-align:center; padding:1.5rem; color:var(--text-muted); font-size:0.8rem; font-style:italic;">
-                Click <strong style="font-style:normal; color:var(--text-secondary);">⚡ Preview</strong> to run a test query with the current filters.
+            <div id="previewEmptyState"
+                style="text-align:center; padding:1.5rem; color:var(--text-muted); font-size:0.8rem; font-style:italic;">
+                No preview loaded.
             </div>
         </div>
-
-    </div>{# end unified panel #}
+    </div>{# end card 2 #}
 
     <div class="btn-row">
         <a href="{{ url_for('fields') }}" class="btn btn-secondary">← Back</a>
@@ -145,7 +200,14 @@
 
 {% block scripts %}
 <script id="source-fields-data" type="application/json">{{ source_fields | tojson | safe }}</script>
+<script id="filter-conditions-data" type="application/json">{{ filter_conditions | tojson | safe }}</script>
 <script>
+    let previewTimer = null;
+    function triggerLivePreview() {
+        clearTimeout(previewTimer);
+        previewTimer = setTimeout(previewData, 400);
+    }
+
     (function () {
         const builder = document.getElementById('filterBuilder');
         const hiddenInput = document.getElementById('filterConditionsInput');
@@ -154,8 +216,7 @@
 
         let groups = [];
         try {
-            // Seed from server
-            groups = {{ filter_conditions | tojson | safe }};
+            groups = JSON.parse(document.getElementById('filter-conditions-data').textContent);
         } catch (e) {
             groups = [];
         }
@@ -201,7 +262,7 @@
             const type = (fieldObj.type || '').toLowerCase();
             const hasBoolType = type === 'boolean' || type === 'bool' || type === 'true_false' || type === 'checkbox';
             if (hasBoolType) return true;
-            
+
             if (fieldObj.choices && fieldObj.choices.length === 2) {
                 const values = fieldObj.choices.map(c => String(c.value).toLowerCase());
                 const hasTrueLike = values.includes('true') || values.includes('yes') || values.includes('y') || values.includes('1');
@@ -295,7 +356,7 @@
                 g.filter(c => c.field && c.op)
             ).filter(g => g.length > 0);
             hiddenInput.value = JSON.stringify(cleaned);
-            
+
             const total = cleaned.reduce((s, g) => s + g.length, 0);
             badge.textContent = total === 0
                 ? 'All records'
@@ -331,9 +392,9 @@
                     const isFirst = ci === 0;
                     const rowEl = document.createElement('div');
                     rowEl.className = 'filter-row';
-                    
+
                     const prefixHtml = `<div class="filter-row-prefix">${isFirst ? '' : 'or'}</div>`;
-                    
+
                     const noVal = noValueOps.has(cond.op);
                     const fieldObj = sourceFields.find(f => f.name === cond.field);
                     const isBool = isBooleanField(fieldObj);
@@ -414,10 +475,11 @@
             });
 
             const andRow = document.createElement('div');
-            andRow.style.cssText = 'padding: 0.3rem 1.1rem 0.6rem 1.1rem;';
+            andRow.style.cssText = 'padding: 0.3rem 1.1rem 0.6rem 1.1rem; display: flex; align-items: center; gap: 0.5rem;';
             andRow.innerHTML = `
+                <div style="width: 28px; flex-shrink: 0;"></div>
                 <button type="button" class="btn btn-secondary btn-sm btn-filter--and" style="font-size:0.72rem; height:26px; padding:0 0.6rem;">
-                    + AND Group
+                    + AND
                 </button>
             `;
             builder.appendChild(andRow);
@@ -433,10 +495,10 @@
                     const ci = +e.target.dataset.ci;
                     const field = e.target.value;
                     const fieldObj = sourceFields.find(f => f.name === field);
-                    
+
                     groups[gi][ci].field = field;
                     groups[gi][ci].value = '';
-                    
+
                     if (isBooleanField(fieldObj)) {
                         groups[gi][ci].op = '=';
                     } else {
@@ -444,6 +506,7 @@
                         groups[gi][ci].op = ops[0]?.val || '=';
                     }
                     render();
+                    triggerLivePreview();
                 });
             });
 
@@ -453,13 +516,14 @@
                     const ci = +e.target.dataset.ci;
                     groups[gi][ci].op = e.target.value;
                     render();
+                    triggerLivePreview();
                 });
             });
 
             builder.querySelectorAll('.fc-val').forEach(inp => {
                 const gi = +inp.dataset.gi;
                 const ci = +inp.dataset.ci;
-                
+
                 if (inp.tagName === 'INPUT') {
                     inp.dataset.field = groups[gi][ci].field;
                 }
@@ -467,15 +531,17 @@
                 inp.addEventListener('input', e => {
                     groups[gi][ci].value = e.target.value;
                     syncHidden();
+                    triggerLivePreview();
                 });
 
                 inp.addEventListener('change', e => {
                     groups[gi][ci].value = e.target.value;
                     syncHidden();
+                    triggerLivePreview();
                 });
 
                 if (inp.tagName !== 'INPUT') return;
-                
+
                 const container = inp.closest('.fc-val-container');
                 const listEl = container.querySelector('.autocomplete-list');
 
@@ -506,6 +572,7 @@
                         groups[gi][ci].value = val;
                         syncHidden();
                         listEl.style.display = 'none';
+                        triggerLivePreview();
                     }
                 });
             });
@@ -514,6 +581,7 @@
                 btn.addEventListener('click', e => {
                     groups.push([{ field: '', op: '', value: '' }]);
                     render();
+                    triggerLivePreview();
                 });
             });
 
@@ -522,6 +590,7 @@
                     const gi = +e.target.dataset.gi;
                     groups[gi].push({ field: '', op: '', value: '' });
                     render();
+                    triggerLivePreview();
                 });
             });
 
@@ -535,6 +604,7 @@
                         groups[gi].splice(ci, 1);
                     }
                     render();
+                    triggerLivePreview();
                 });
             });
         }
@@ -542,6 +612,7 @@
         document.getElementById('btnClearFilters').addEventListener('click', () => {
             groups = [];
             render();
+            triggerLivePreview();
         });
 
         document.getElementById('filtersForm').addEventListener('submit', () => {
@@ -554,6 +625,7 @@
     // ─── Data Preview Grid Logic ───
     function previewData() {
         const btn = document.getElementById('btnPreviewData');
+        const loader = document.getElementById('previewLoadingIndicator');
         const container = document.getElementById('previewTableContainer');
         const emptyState = document.getElementById('previewEmptyState');
         const statusEl = document.getElementById('previewStatus');
@@ -566,7 +638,7 @@
         const orderbyDir = document.querySelector('select[name="orderby_dir"]').value;
 
         btn.disabled = true;
-        btn.textContent = 'Loading...';
+        if (loader) loader.style.display = 'inline';
         emptyState.style.display = 'none';
 
         fetch('/api/preview_data', {
@@ -578,71 +650,81 @@
                 orderby_dir: orderbyDir
             })
         })
-        .then(res => {
-            if (!res.ok) return res.json().then(e => { throw new Error(e.error || 'Server error') });
-            return res.json();
-        })
-        .then(data => {
-            btn.disabled = false;
-            btn.textContent = '⚡ Preview Filtered Data';
+            .then(res => {
+                if (!res.ok) return res.json().then(e => { throw new Error(e.error || 'Server error') });
+                return res.json();
+            })
+            .then(data => {
+                btn.disabled = false;
+                if (loader) loader.style.display = 'none';
 
-            if (data.ok && data.records) {
-                countVal.textContent = data.total_count;
-                statusEl.style.display = 'block';
+                if (data.ok && data.records) {
+                    countVal.textContent = data.total_count;
+                    statusEl.style.display = 'block';
 
-                if (data.records.length > 0) {
-                    headRow.innerHTML = '';
-                    tblBody.innerHTML = '';
+                    if (data.records.length > 0) {
+                        headRow.innerHTML = '';
+                        tblBody.innerHTML = '';
 
-                    const cols = new Set();
-                    data.records.forEach(r => {
-                        Object.keys(r).forEach(k => {
-                            if (k !== 'attributes') cols.add(k);
+                        const cols = new Set();
+                        data.records.forEach(r => {
+                            Object.keys(r).forEach(k => {
+                                if (k !== 'attributes') cols.add(k);
+                            });
                         });
-                    });
-                    const colList = Array.from(cols);
+                        const colList = Array.from(cols);
 
-                    colList.forEach(c => {
-                        const th = document.createElement('th');
-                        th.textContent = c;
-                        headRow.appendChild(th);
-                    });
-
-                    data.records.forEach(r => {
-                        const tr = document.createElement('tr');
                         colList.forEach(c => {
-                            const td = document.createElement('td');
-                            const val = r[c];
-                            if (typeof val === 'object' && val !== null) {
-                                td.textContent = JSON.stringify(val);
-                            } else {
-                                td.textContent = val !== undefined ? val : '—';
-                            }
-                            tr.appendChild(td);
+                            const th = document.createElement('th');
+                            th.textContent = c;
+                            headRow.appendChild(th);
                         });
-                        tblBody.appendChild(tr);
-                    });
 
-                    container.style.display = 'block';
-                    emptyState.style.display = 'none';
+                        data.records.forEach(r => {
+                            const tr = document.createElement('tr');
+                            colList.forEach(c => {
+                                const td = document.createElement('td');
+                                const val = r[c];
+                                if (typeof val === 'object' && val !== null) {
+                                    td.textContent = JSON.stringify(val);
+                                } else {
+                                    td.textContent = val !== undefined ? val : '—';
+                                }
+                                tr.appendChild(td);
+                            });
+                            tblBody.appendChild(tr);
+                        });
+
+                        container.style.display = 'block';
+                        emptyState.style.display = 'none';
+                    } else {
+                        container.style.display = 'none';
+                        emptyState.textContent = 'No records match these filter conditions.';
+                        emptyState.style.display = 'block';
+                    }
                 } else {
-                    container.style.display = 'none';
-                    emptyState.textContent = 'No records match these filter conditions.';
-                    emptyState.style.display = 'block';
+                    throw new Error('Data format error from server');
                 }
-            } else {
-                throw new Error('Data format error from server');
-            }
-        })
-        .catch(err => {
-            btn.disabled = false;
-            btn.textContent = '⚡ Preview Filtered Data';
-            container.style.display = 'none';
-            emptyState.textContent = 'Failed to load preview: ' + err.message;
-            emptyState.style.display = 'block';
-            statusEl.style.display = 'none';
-            showToast('Preview failed: ' + err.message, 'error');
-        });
+            })
+            .catch(err => {
+                btn.disabled = false;
+                if (loader) loader.style.display = 'none';
+                container.style.display = 'none';
+                emptyState.textContent = 'Failed to load preview: ' + err.message;
+                emptyState.style.display = 'block';
+                statusEl.style.display = 'none';
+                showToast('Preview failed: ' + err.message, 'error');
+            });
     }
+
+    // Attach listeners for options input to trigger live preview
+    document.getElementById('filterLimit').addEventListener('input', triggerLivePreview);
+    document.querySelector('select[name="orderby_field"]').addEventListener('change', triggerLivePreview);
+    document.querySelector('select[name="orderby_dir"]').addEventListener('change', triggerLivePreview);
+
+    // Initial preview load on page display
+    document.addEventListener('DOMContentLoaded', () => {
+        previewData();
+    });
 </script>
 {% endblock %}

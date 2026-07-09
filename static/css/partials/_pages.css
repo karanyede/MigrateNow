@@ -8,6 +8,10 @@
     margin-bottom: 1.5rem;
 }
 
+.dashboard-stats--admin {
+    grid-template-columns: repeat(5, 1fr);
+}
+
 .stat-summary-card {
     background: var(--surface-2);
     border: 1px solid var(--border-subtle);

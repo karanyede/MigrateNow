@@ -16,6 +16,12 @@
     </svg>
     Export PDF Report
 </button>
+<button onclick="exportCSV()" class="btn btn-secondary btn-sm" style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+    </svg>
+    Export CSV Report
+</button>
 {% endblock %}
 
 {% block content %}
@@ -168,6 +174,40 @@
 {% block scripts %}
 <script id="report-data" type="application/json">{{ entry | tojson | safe }}</script>
 <script>
+    function exportCSV() {
+        const r = JSON.parse(document.getElementById('report-data').textContent);
+        const rows = [
+            ["Metric", "Value"],
+            ["Timestamp", r.timestamp],
+            ["Source Instance", r.source_instance],
+            ["Source Table", r.source_table],
+            ["Target Instance", r.target_instance],
+            ["Target Table", r.target_table],
+            ["Total Source Records", r.total_source_records],
+            ["Inserted", r.inserts],
+            ["Updated", r.updates],
+            ["Skipped", r.skipped],
+            ["Failed", r.failed],
+            ["Duration (s)", r.duration],
+            ["Status", r.status],
+            ["Fetch Mode", r.fetch_mode],
+            ["Migration Type", r.migration_type]
+        ];
+        const csvContent = rows
+            .map((e) => e.map((val) => '"' + String(val).replace(/"/g, '""') + '"').join(","))
+            .join("\n");
+            
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", "migration_report_" + r.timestamp.replace(/[:.]/g, "-") + ".csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
+
     // ── Smooth Count Up micro-animations ────────────────────
     function countUpTo(el, target, duration) {
         if (!el) return;

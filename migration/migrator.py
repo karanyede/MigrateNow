@@ -35,7 +35,7 @@ from typing import Callable
 from config import BATCH_SIZE, FETCH_PAGE_SIZE, LOG_DIR, SF_COLLECTIONS_BATCH_SIZE
 from migration.client import ServiceNowClient
 from migration.csv_fetcher import CsvExportFetcher
-from migration.differ import DiffEngine
+from migration.differ import DiffEngine, TargetMatcher
 from migration.fetcher import BulkFetcher
 from migration.loader import BulkLoader, LoadResult
 from migration.rate_tracker import RateTracker

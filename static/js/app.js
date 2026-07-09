@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initFieldFilter();
     initMappingAutoCheck();
     initFormGuards();
+    initWizardNavigation();
 });
 
 // ─── Toasts ──────────────────────────────────────────────────────
@@ -280,5 +281,28 @@ function initFormGuards() {
                 }, 30000);
             }
         });
+    });
+}
+
+// ─── Interactive Wizard Steps Navigation ────────────────────────
+function initWizardNavigation() {
+    const steps = document.querySelectorAll(".wizard-flow-bar .wizard-flow-step");
+    if (!steps.length) return;
+
+    const routes = [
+        "/connect",
+        "/tables",
+        "/fields",
+        "/filters",
+        "/migrate/confirm"
+    ];
+
+    steps.forEach((step, idx) => {
+        if (routes[idx]) {
+            step.style.cursor = "pointer";
+            step.addEventListener("click", () => {
+                window.location.href = routes[idx];
+            });
+        }
     });
 }

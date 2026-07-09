@@ -92,6 +92,27 @@ _progress_q: queue.Queue = queue.Queue()
 _pause_event = threading.Event()
 _pause_event.set()
 
+_migration_running = False
+_migration_state = None
+
+# Thread-safe-ish memory cache to avoid storing large metadata in the Flask session cookie (which has a 4KB limit)
+_fields_metadata_cache = {}
+
+def _get_cached_fields(mt: str, table: str, role: str) -> list:
+    user_id = session.get("user_id", "system")
+    key = (user_id, mt, table, role)
+    return _fields_metadata_cache.get(key, [])
+
+def _set_cached_fields(mt: str, table: str, role: str, fields: list) -> None:
+    user_id = session.get("user_id", "system")
+    key = (user_id, mt, table, role)
+    _fields_metadata_cache[key] = fields
+
+def _clear_cached_fields(mt: str, table: str, role: str) -> None:
+    user_id = session.get("user_id", "system")
+    key = (user_id, mt, table, role)
+    _fields_metadata_cache.pop(key, None)
+
 # Rollback SSE queue and DB path
 _rollback_q: queue.Queue = queue.Queue()
 _rollback_result: dict = {}
@@ -308,11 +329,19 @@ def _save_history(history: list[dict]) -> None:
     )
 
 
-def _append_history(entry: dict) -> None:
+def _append_history(entry: dict, user_id: str | None = None, username: str | None = None) -> None:
     """Append a migration result to history, tagging the current user."""
-    # Tag with current user (fall back gracefully if called before auth is set)
-    entry.setdefault("user_id", session.get("user_id", "system"))
-    entry.setdefault("username", session.get("username", "system"))
+    # Try request context if not explicitly provided
+    if not user_id or not username:
+        try:
+            if not user_id:
+                user_id = session.get("user_id")
+            if not username:
+                username = session.get("username")
+        except RuntimeError:
+            pass
+    entry.setdefault("user_id", user_id or "system")
+    entry.setdefault("username", username or "system")
     history = _load_all_history()
     history.insert(0, entry)  # newest first
     _save_history(history)
@@ -1021,6 +1050,7 @@ def select_type():
 @login_required
 def connect_page():
     """Render connect page with appropriate credential fields."""
+    session["migration_step"] = 1
     mt = session.get("migration_type", "sn_sn")
     return render_template(
         "index.html",
@@ -1063,8 +1093,6 @@ def connect():
     session.pop("target_table", None)
     session.pop("field_mapping", None)
     session.pop("filter_conditions", None)
-    session.pop("_source_fields", None)
-    session.pop("_target_fields", None)
     session.pop("fetch_mode", None)
 
     source_is_sn = source_platform == "sn"
@@ -1187,6 +1215,7 @@ def connect():
 @login_required
 def tables():
     """Show table/object selection page."""
+    session["migration_step"] = 2
     mt = session.get("migration_type", "sn_sn")
     source_is_sn = mt in ("sn_sn", "sn_sf")
     target_is_sn = mt in ("sn_sn", "sf_sn")
@@ -1261,6 +1290,7 @@ def api_search_objects():
 @login_required
 def fields():
     """Show field-mapping UI."""
+    session["migration_step"] = 3
     src_table = session.get("source_table")
     tgt_table = session.get("target_table")
     mt = session.get("migration_type", "sn_sn")
@@ -1383,8 +1413,24 @@ def fields():
     )
 
     # Store for reuse
-    session["_source_fields"] = source_fields
-    session["_target_fields"] = target_fields
+    _set_cached_fields(mt, src_table, "source", source_fields)
+    _set_cached_fields(mt, tgt_table, "target", target_fields)
+
+    # Compute mandatory target fields
+    mandatory_target_fields = []
+    if target_is_sf:
+        for f in target_fields:
+            if (
+                f.get("createable", False)
+                and not f.get("nillable", True)
+                and not f.get("defaultedOnCreate", False)
+                and f["name"] not in SF_SYSTEM_FIELDS
+            ):
+                mandatory_target_fields.append(f)
+    else:  # target is ServiceNow
+        for f in target_fields:
+            if f.get("mandatory", False) and f["name"] not in SN_SYSTEM_FIELDS:
+                mandatory_target_fields.append(f)
 
     return render_template(
         "fields.html",
@@ -1396,6 +1442,7 @@ def fields():
         auto_map=auto_map,
         auto_count=len(auto_map),
         manual_count=manual_count,
+        mandatory_target_fields=mandatory_target_fields,
     )
 
 
@@ -1404,7 +1451,6 @@ def fields():
 @login_required
 def fields_post():
     """Process the field mapping form and start migration."""
-    source_fields = session.get("_source_fields", [])
     field_mapping: dict[str, str] = {}
 
     for key in request.form.keys():
@@ -1541,6 +1587,7 @@ def _build_sf_where(filters: list) -> str:
 @login_required
 def filters_page():
     """Show filters and data preview UI (Step 4 of 5)."""
+    session["migration_step"] = 4
     src_table = session.get("source_table")
     tgt_table = session.get("target_table")
     mt = session.get("migration_type", "sn_sn")
@@ -1548,8 +1595,8 @@ def filters_page():
         flash("Select tables first.", "error")
         return redirect(url_for("tables"))
 
-    source_fields = session.get("_source_fields", [])
-    target_fields = session.get("_target_fields", [])
+    source_fields = _get_cached_fields(mt, src_table, "source")
+    target_fields = _get_cached_fields(mt, tgt_table, "target")
 
     if not source_fields:
         source_is_sf = mt in ("sf_sf", "sf_sn")
@@ -1563,7 +1610,7 @@ def filters_page():
                 choices_map = src_client.get_choice_values(src_table)
                 for f in source_fields:
                     f["choices"] = choices_map.get(f["name"], [])
-            session["_source_fields"] = source_fields
+            _set_cached_fields(mt, src_table, "source", source_fields)
         except Exception as exc:
             logger.error("Failed to fetch source fields for filters preview: %s", exc)
 
@@ -1765,7 +1812,8 @@ def api_check_coalesce():
     if not table:
         return jsonify({"error": "Missing table parameter"}), 400
 
-    cached = session.get("_target_fields")
+    mt = session.get("migration_type", "sn_sn")
+    cached = _get_cached_fields(mt, table, "target")
     if cached:
         field_names = [f["name"] for f in cached]
         exists = "u_legacy_sysid" in field_names
@@ -1796,7 +1844,8 @@ def api_create_coalesce():
         result = client.create_legacy_sysid_field(table)
         
         # Clear the field cache so the new field shows up immediately
-        session.pop("_target_fields", None)
+        mt = session.get("migration_type", "sn_sn")
+        _clear_cached_fields(mt, table, "target")
         
         return jsonify({
             "success": True,
@@ -1816,7 +1865,8 @@ def api_check_external_id():
     if not obj:
         return jsonify({"error": "Missing object parameter"}), 400
 
-    cached = session.get("_target_fields")
+    mt = session.get("migration_type", "sn_sn")
+    cached = _get_cached_fields(mt, obj, "target")
     if cached:
         for f in cached:
             if f["name"] == "SN_Legacy_Id__c":
@@ -2177,7 +2227,7 @@ def migrate_repeat(config_id: str):
     # Also populates _source_fields and metadata since fields.html expects it
     if cfg.get("field_mapping"):
         f_list = [{"name": k, "label": k} for k in cfg["field_mapping"].keys()]
-        session["_source_fields"] = f_list
+        _set_cached_fields(mt, cfg["source_table"], "source", f_list)
         return redirect(url_for("filters_page"))
     else:
         # Config was seeded from history without field_mapping — send user to the
@@ -2191,12 +2241,14 @@ def migrate_repeat(config_id: str):
 def migrate_confirm():
     """Show confirmation summary before running a repeated/pre-configured migration."""
     if request.method == "POST":
+        session["start_migration"] = True
         return redirect(url_for("migrate"))
 
+    session["migration_step"] = 4
     mapping = session.get("field_mapping")
     if not mapping:
         flash("Configure field mapping first.", "error")
-        return redirect(url_for("home"))
+        return redirect(url_for("fields"))
 
     mt = session.get("migration_type", "sn_sn")
     source_is_sn = mt in ("sn_sn", "sn_sf")
@@ -2228,54 +2280,96 @@ def migrate():
         flash("Configure field mapping first.", "error")
         return redirect(url_for("fields"))
 
-    mt = session.get("migration_type", "sn_sn")
-    source_is_sn = mt in ("sn_sn", "sn_sf")
-    target_is_sn = mt in ("sn_sn", "sf_sn")
+    global _migration_running
+    if _migration_running:
+        return render_template(
+            "migrate.html",
+            source_table=session.get("source_table"),
+            target_table=session.get("target_table"),
+        )
 
-    # Snapshot session data for the background thread
-    ctx = {
-        "migration_type": mt,
-        "source_table": session["source_table"],
-        "target_table": session["target_table"],
-        "field_mapping": session["field_mapping"],
-        "source_fields_meta": session.get("_source_fields", []),
-        "fetch_mode": session.get("fetch_mode", "auto"),
-        "filter_conditions": session.get("filter_conditions", []),
-        "limit": session.get("limit"),
-        "coalesce_config": session.get("coalesce_config", {}),
-    }
+    # Check if they explicitly started it
+    if session.pop("start_migration", False):
+        session["migration_step"] = 5
+        mt = session.get("migration_type", "sn_sn")
+        source_is_sn = mt in ("sn_sn", "sn_sf")
+        target_is_sn = mt in ("sn_sn", "sf_sn")
 
-    # SN credentials
-    if source_is_sn:
-        ctx.update({
-            "source_instance": session["source_instance"],
-            "source_username": session["source_username"],
-            "source_password": session["source_password"],
-        })
-    if target_is_sn:
-        ctx.update({
-            "target_instance": session["target_instance"],
-            "target_username": session["target_username"],
-            "target_password": session["target_password"],
-        })
+        # Snapshot session data for the background thread
+        ctx = {
+            "user_id": session.get("user_id"),
+            "username": session.get("username"),
+            "migration_type": mt,
+            "source_table": session["source_table"],
+            "target_table": session["target_table"],
+            "field_mapping": session["field_mapping"],
+            "source_fields_meta": _get_cached_fields(mt, session["source_table"], "source"),
+            "fetch_mode": session.get("fetch_mode", "auto"),
+            "filter_conditions": session.get("filter_conditions", []),
+            "limit": session.get("limit"),
+            "coalesce_config": session.get("coalesce_config", {}),
+        }
 
-    # SF credentials
-    if not source_is_sn:  # source is SF
-        for key in ("login_url", "username", "password", "security_token"):
-            ctx[f"sf_source_{key}"] = session.get(f"sf_source_{key}", "")
-    if not target_is_sn:  # target is SF
-        for key in ("login_url", "username", "password", "security_token"):
-            ctx[f"sf_target_{key}"] = session.get(f"sf_target_{key}", "")
+        # SN credentials
+        if source_is_sn:
+            ctx.update({
+                "source_instance": session["source_instance"],
+                "source_username": session["source_username"],
+                "source_password": session["source_password"],
+            })
+        if target_is_sn:
+            ctx.update({
+                "target_instance": session["target_instance"],
+                "target_username": session["target_username"],
+                "target_password": session["target_password"],
+            })
 
-    # Start the migration on a background thread.
-    t = threading.Thread(target=_run_migration, args=(ctx,), daemon=True)
-    t.start()
+        # SF credentials
+        if not source_is_sn:  # source is SF
+            for key in ("login_url", "username", "password", "security_token"):
+                ctx[f"sf_source_{key}"] = session.get(f"sf_source_{key}", "")
+        if not target_is_sn:  # target is SF
+            for key in ("login_url", "username", "password", "security_token"):
+                ctx[f"sf_target_{key}"] = session.get(f"sf_target_{key}", "")
 
-    return render_template(
-        "migrate.html",
-        source_table=session.get("source_table"),
-        target_table=session.get("target_table"),
-    )
+        # Start the migration on a background thread.
+        _migration_running = True
+        t = threading.Thread(target=_run_migration, args=(ctx,), daemon=True)
+        t.start()
+
+        return render_template(
+            "migrate.html",
+            source_table=session.get("source_table"),
+            target_table=session.get("target_table"),
+        )
+    else:
+        # Direct URL visit or refresh when not running
+        if session.get("field_mapping"):
+            return redirect(url_for("migrate_confirm"))
+        return redirect(url_for("connect_page"))
+
+
+@app.route("/migration/active")
+@login_required
+def migration_active():
+    """Redirect to the active migration wizard step or running migration page."""
+    global _migration_running
+    if _migration_running:
+        return redirect(url_for("migrate"))
+
+    step = session.get("migration_step", 1)
+    if step == 2:
+        return redirect(url_for("tables"))
+    elif step == 3:
+        return redirect(url_for("fields"))
+    elif step == 4:
+        return redirect(url_for("filters_page"))
+    elif step == 5:
+        if session.get("field_mapping"):
+            return redirect(url_for("migrate_confirm"))
+        return redirect(url_for("connect_page"))
+    else:
+        return redirect(url_for("connect_page"))
 
 
 @app.route("/migrate/stream")
@@ -2284,6 +2378,12 @@ def migrate_stream():
     """SSE endpoint — streams progress events to the browser."""
 
     def generate() -> Generator[str, None, None]:
+        global _migration_running, _migration_state
+        if _migration_running and _migration_state:
+            yield f"event: progress\ndata: {json.dumps(_migration_state)}\n\n"
+            if not _pause_event.is_set():
+                yield "event: paused\ndata: {}\n\n"
+
         while True:
             try:
                 msg = _progress_q.get(timeout=120)
@@ -2331,9 +2431,16 @@ def migrate_resume():
 
 def _run_migration(ctx: dict):
     """Execute the migration pipeline on a background thread."""
-    global _progress_q
+    global _progress_q, _migration_running, _migration_state
     _progress_q = queue.Queue()  # fresh queue for each run
     _pause_event.set()  # Make sure we start in running state
+    _migration_running = True
+    _migration_state = {
+        "phase": "fetch_source",
+        "processed": 0,
+        "total": 0,
+        "detail": "Initializing secure pipeline...",
+    }
 
     mt = ctx.get("migration_type", "sn_sn")
     source_is_sn = mt in ("sn_sn", "sn_sf")
@@ -2388,18 +2495,20 @@ def _run_migration(ctx: dict):
             sf_external_id_field = "SN_Legacy_Id__c"
 
         def progress_cb(phase, processed, total, detail=""):
+            global _migration_state
+            _migration_state = {
+                "phase": phase,
+                "processed": processed,
+                "total": total,
+                "detail": detail,
+            }
             event_type = "progress"
             if phase in ("paused", "resuming"):
                 event_type = phase
             _progress_q.put(
                 {
                     "event": event_type,
-                    "data": {
-                        "phase": phase,
-                        "processed": processed,
-                        "total": total,
-                        "detail": detail,
-                    },
+                    "data": _migration_state,
                 }
             )
 
@@ -2468,7 +2577,7 @@ def _run_migration(ctx: dict):
             "fetch_mode": report.fetch_mode_used,
             "migration_type": mt,
             "rollback_job_id": rollback_job_id,
-        })
+        }, user_id=ctx.get("user_id"), username=ctx.get("username"))
 
         report_dict = report.to_dict()
         report_dict["rollback_job_id"] = rollback_job_id
@@ -2494,7 +2603,7 @@ def _run_migration(ctx: dict):
             "status": "failed",
             "error": str(exc),
             "migration_type": mt,
-        })
+        }, user_id=ctx.get("user_id"), username=ctx.get("username"))
 
         _progress_q.put(
             {
@@ -2502,6 +2611,9 @@ def _run_migration(ctx: dict):
                 "data": {"message": str(exc)},
             }
         )
+    finally:
+        _migration_running = False
+        _migration_state = None
 
 
 # ─────────────────────────────────────────────────────────────────────

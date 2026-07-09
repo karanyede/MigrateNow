@@ -359,7 +359,7 @@ class ServiceNowClient:
                 "sysparm_query": query,
                 "sysparm_fields": (
                     "name,element,column_label,"
-                    "internal_type,max_length,reference"
+                    "internal_type,max_length,reference,mandatory"
                 ),
                 "sysparm_limit": 2000,
                 "sysparm_no_count": "true",
@@ -390,6 +390,11 @@ class ServiceNowClient:
             if isinstance(ref, dict):
                 ref = ref.get("display_value", ref.get("value", ""))
 
+            mandatory = f.get("mandatory", "false")
+            if isinstance(mandatory, dict):
+                mandatory = mandatory.get("value", "false")
+            is_mandatory = str(mandatory).lower() == "true"
+
             # Determine priority — lower = higher priority (child wins)
             tbl = f.get("name", "")
             if isinstance(tbl, dict):
@@ -403,6 +408,7 @@ class ServiceNowClient:
                     "type": itype,
                     "max_length": f.get("max_length", ""),
                     "reference": ref,
+                    "mandatory": is_mandatory,
                     "_prio": prio,
                 }
 

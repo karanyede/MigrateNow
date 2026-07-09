@@ -459,6 +459,8 @@ class SalesforceClient:
                 "externalId": f.get("externalId", False),
                 "createable": f.get("createable", False),
                 "updateable": f.get("updateable", False),
+                "nillable": f.get("nillable", True),
+                "defaultedOnCreate": f.get("defaultedOnCreate", False),
                 "choices": choices,
             })
 

@@ -76,6 +76,7 @@ class SalesforceLoader:
         self._progress = progress_callback
         self._processed = 0
         self._total = 0
+        self.unwritable_fields = set()
 
     def _report_progress(self, count: int, phase: str) -> None:
         self._processed += count
@@ -214,6 +215,8 @@ class SalesforceLoader:
         """
         mapped: dict = {}
         for src_field, tgt_field in self.mapping.items():
+            if tgt_field in self.unwritable_fields:
+                continue
             if src_field in record:
                 val = record[src_field]
                 # Coerce whole-number floats → int (60426.0 → 60426)
@@ -348,6 +351,69 @@ class SalesforceLoader:
 
     # ── SObject Collections Insert ───────────────────────────────────
 
+    # Error messages that signal a field is genuinely unwritable due to FLS/permissions
+    _UNWRITABLE_SIGNALS = (
+        "unable to create/update fields:",
+        "field is not writeable",
+        "insufficient access",
+        "not accessible",
+        "not creatable",
+        "not updateable",
+        "you do not have access",
+        "the object cannot be created",
+    )
+    # Error messages that signal a field is REQUIRED (must NOT be stripped)
+    _REQUIRED_SIGNALS = (
+        "required fields are missing",
+        "required field missing",
+        "is required",
+        "cannot be blank",
+        "cannot be null",
+        "value required",
+    )
+
+    def _is_unwritable_error(self, err: dict) -> tuple[bool, list[str]]:
+        """
+        Inspect a single SObject error dict and determine if it reflects
+        an FLS / permission issue (field should be stripped) vs. a required-
+        field or validation error (field must NOT be stripped).
+
+        Returns (is_unwritable, [bad_field_names]).
+        """
+        msg = (err.get("message") or err.get("errorCode") or "").lower()
+
+        # If the error is about a *required* field, never strip it
+        for sig in self._REQUIRED_SIGNALS:
+            if sig in msg:
+                return False, []
+
+        bad_fields: list[str] = []
+
+        # Check for explicit FLS / permission signal in message
+        is_permission_error = any(sig in msg for sig in self._UNWRITABLE_SIGNALS)
+
+        if is_permission_error:
+            # Parse explicit field names from message like
+            # "Unable to create/update fields: Subject. Please check..."
+            for sig in ("unable to create/update fields:",):
+                if sig in msg:
+                    try:
+                        raw_msg = err.get("message", "")
+                        part = raw_msg.split("Unable to create/update fields:", 1)[1]
+                        field_part = part.split(".", 1)[0]
+                        bad_fields.extend([f.strip() for f in field_part.split(",") if f.strip()])
+                    except Exception:
+                        pass
+
+            # If we found specific field names in the error message, use those.
+            # Otherwise fall back to the fields[] list — but only for genuine FLS errors.
+            if not bad_fields:
+                fields = err.get("fields", [])
+                if fields:
+                    bad_fields.extend([f for f in fields if isinstance(f, str)])
+
+        return bool(bad_fields), bad_fields
+
     def _collections_insert(
         self, records: list[dict]
     ) -> tuple[int, int, list[dict], list[str]]:
@@ -357,33 +423,67 @@ class SalesforceLoader:
         inserted_ids: list[str] = []
 
         for chunk in self._chunks(records, self.batch_size):
-            mapped_chunk = [self._apply_mapping(rec) for rec in chunk]
+            retries = 3
+            while retries > 0:
+                mapped_chunk = [self._apply_mapping(rec) for rec in chunk]
 
-            try:
-                results = self.client.sobject_collections_create(
-                    self.object_name, mapped_chunk
-                )
-                for i, r in enumerate(results):
-                    if r.get("success"):
-                        ok += 1
-                        sf_id = r.get("id", "")
-                        if sf_id:
-                            inserted_ids.append(sf_id)
-                    else:
-                        fail += 1
-                        error_msg = r.get("errors", [{}])[0].get("message", "unknown")
-                        if fail <= 5 or fail % 10000 == 0:
-                            logger.error(
-                                "Collections insert failed record %d: %s", fail, error_msg
-                            )
-                        elif fail == 6:
-                            logger.error("... (suppressing further individual insert errors)")
-                        if i < len(chunk):
-                            failed_records.append(chunk[i])
-            except Exception as exc:
-                logger.error("Collections insert chunk failed: %s", exc)
-                fail += len(chunk)
-                failed_records.extend(chunk)
+                try:
+                    results = self.client.sobject_collections_create(
+                        self.object_name, mapped_chunk
+                    )
+
+                    new_unwritable_found = False
+                    for r in results:
+                        if not r.get("success"):
+                            errors = r.get("errors", [])
+                            for err in errors:
+                                is_unwritable, bad_fields = self._is_unwritable_error(err)
+                                if is_unwritable:
+                                    for bf in bad_fields:
+                                        if bf not in self.unwritable_fields:
+                                            logger.warning(
+                                                "Detected unwritable target field: %s. "
+                                                "Stripping and retrying...", bf
+                                            )
+                                            self.unwritable_fields.add(bf)
+                                            new_unwritable_found = True
+                                else:
+                                    # Log non-FLS errors but do not strip
+                                    msg = err.get("message", "?")
+                                    fields = err.get("fields", [])
+                                    if fields:
+                                        logger.debug(
+                                            "Non-FLS error on fields %s: %s", fields, msg
+                                        )
+
+                    if new_unwritable_found:
+                        retries -= 1
+                        continue
+
+                    for i, r in enumerate(results):
+                        if r.get("success"):
+                            ok += 1
+                            sf_id = r.get("id", "")
+                            if sf_id:
+                                inserted_ids.append(sf_id)
+                        else:
+                            fail += 1
+                            error_msg = r.get("errors", [{}])[0].get("message", "unknown")
+                            if fail <= 5 or fail % 10000 == 0:
+                                logger.error(
+                                    "Collections insert failed record %d: %s", fail, error_msg
+                                )
+                            elif fail == 6:
+                                logger.error("... (suppressing further individual insert errors)")
+                            if i < len(chunk):
+                                failed_records.append(chunk[i])
+                    break
+
+                except Exception as exc:
+                    logger.error("Collections insert chunk failed: %s", exc)
+                    fail += len(chunk)
+                    failed_records.extend(chunk)
+                    break
             self._report_progress(len(chunk), "insert")
 
         logger.info(
@@ -401,36 +501,68 @@ class SalesforceLoader:
         failed_records: list[dict] = []
 
         for chunk in self._chunks(records, self.batch_size):
-            mapped_chunk = []
-            for rec in chunk:
-                mapped = self._apply_mapping(rec)
-                # Need the SF Id for update
-                if "Id" in rec:
-                    mapped["Id"] = rec["Id"]
-                elif "_target_sf_id" in rec:
-                    mapped["Id"] = rec["_target_sf_id"]
-                mapped_chunk.append(mapped)
+            retries = 3
+            while retries > 0:
+                mapped_chunk = []
+                for rec in chunk:
+                    mapped = self._apply_mapping(rec)
+                    if "_target_sf_id" in rec:
+                        mapped["Id"] = rec["_target_sf_id"]
+                    elif "Id" in rec:
+                        mapped["Id"] = rec["Id"]
+                    mapped_chunk.append(mapped)
 
-            try:
-                results = self.client.sobject_collections_update(
-                    self.object_name, mapped_chunk
-                )
-                for i, r in enumerate(results):
-                    if r.get("success"):
-                        ok += 1
-                    else:
-                        fail += 1
-                        errors = r.get("errors", [])
-                        error_msg = errors[0].get("message", "?") if errors else "?"
-                        logger.error(
-                            "Collections update failed: %s", error_msg
-                        )
-                        if i < len(chunk):
-                            failed_records.append(chunk[i])
-            except Exception as exc:
-                logger.error("Collections update chunk failed: %s", exc)
-                fail += len(chunk)
-                failed_records.extend(chunk)
+                try:
+                    results = self.client.sobject_collections_update(
+                        self.object_name, mapped_chunk
+                    )
+                    
+                    new_unwritable_found = False
+                    for r in results:
+                        if not r.get("success"):
+                            errors = r.get("errors", [])
+                            for err in errors:
+                                is_unwritable, bad_fields = self._is_unwritable_error(err)
+                                if is_unwritable:
+                                    for bf in bad_fields:
+                                        if bf not in self.unwritable_fields:
+                                            logger.warning(
+                                                "Detected unwritable target field: %s. "
+                                                "Stripping and retrying...", bf
+                                            )
+                                            self.unwritable_fields.add(bf)
+                                            new_unwritable_found = True
+                                else:
+                                    msg = err.get("message", "?")
+                                    fields = err.get("fields", [])
+                                    if fields:
+                                        logger.debug(
+                                            "Non-FLS error on fields %s: %s", fields, msg
+                                        )
+
+                    if new_unwritable_found:
+                        retries -= 1
+                        continue
+
+                    for i, r in enumerate(results):
+                        if r.get("success"):
+                            ok += 1
+                        else:
+                            fail += 1
+                            errors = r.get("errors", [])
+                            error_msg = errors[0].get("message", "?") if errors else "?"
+                            logger.error(
+                                "Collections update failed: %s", error_msg
+                            )
+                            if i < len(chunk):
+                                failed_records.append(chunk[i])
+                    break
+
+                except Exception as exc:
+                    logger.error("Collections update chunk failed: %s", exc)
+                    fail += len(chunk)
+                    failed_records.extend(chunk)
+                    break
             self._report_progress(len(chunk), "update")
 
         logger.info(
@@ -449,25 +581,47 @@ class SalesforceLoader:
         inserted_ids: list[str] = []
 
         for rec in records:
-            mapped = self._apply_mapping(rec)
-            try:
-                results = self.client.sobject_collections_create(
-                    self.object_name, [mapped]
-                )
-                if results and results[0].get("success"):
-                    ok += 1
-                    sf_id = results[0].get("id", "")
-                    if sf_id:
-                        inserted_ids.append(sf_id)
-                else:
+            retries = 3
+            while retries > 0:
+                mapped = self._apply_mapping(rec)
+                try:
+                    results = self.client.sobject_collections_create(
+                        self.object_name, [mapped]
+                    )
+                    if results and results[0].get("success"):
+                        ok += 1
+                        sf_id = results[0].get("id", "")
+                        if sf_id:
+                            inserted_ids.append(sf_id)
+                        break
+                    else:
+                        errors = results[0].get("errors", []) if results else []
+                        new_unwritable = False
+                        for err in errors:
+                            is_unwritable, bad_fields = self._is_unwritable_error(err)
+                            if is_unwritable:
+                                for bf in bad_fields:
+                                    if bf not in self.unwritable_fields:
+                                        logger.warning(
+                                            "Detected unwritable target field in single-record: %s. Stripping...", bf
+                                        )
+                                        self.unwritable_fields.add(bf)
+                                        new_unwritable = True
+
+                        if new_unwritable:
+                            retries -= 1
+                            continue
+
+                        fail += 1
+                        failed_records.append(rec)
+                        break
+                except Exception as exc:
+                    logger.error(
+                        "Single-record insert failed: %s", str(exc)[:300]
+                    )
                     fail += 1
                     failed_records.append(rec)
-            except Exception as exc:
-                logger.error(
-                    "Single-record insert failed: %s", str(exc)[:300]
-                )
-                fail += 1
-                failed_records.append(rec)
+                    break
             self._report_progress(1, "insert")
 
         return ok, fail, failed_records, inserted_ids
@@ -480,26 +634,48 @@ class SalesforceLoader:
         failed_records: list[dict] = []
 
         for rec in records:
-            mapped = self._apply_mapping(rec)
-            if "Id" in rec:
-                mapped["Id"] = rec["Id"]
-            elif "_target_sf_id" in rec:
-                mapped["Id"] = rec["_target_sf_id"]
-            try:
-                results = self.client.sobject_collections_update(
-                    self.object_name, [mapped]
-                )
-                if results and results[0].get("success"):
-                    ok += 1
-                else:
+            retries = 3
+            while retries > 0:
+                mapped = self._apply_mapping(rec)
+                if "_target_sf_id" in rec:
+                    mapped["Id"] = rec["_target_sf_id"]
+                elif "Id" in rec:
+                    mapped["Id"] = rec["Id"]
+                try:
+                    results = self.client.sobject_collections_update(
+                        self.object_name, [mapped]
+                    )
+                    if results and results[0].get("success"):
+                        ok += 1
+                        break
+                    else:
+                        errors = results[0].get("errors", []) if results else []
+                        new_unwritable = False
+                        for err in errors:
+                            is_unwritable, bad_fields = self._is_unwritable_error(err)
+                            if is_unwritable:
+                                for bf in bad_fields:
+                                    if bf not in self.unwritable_fields:
+                                        logger.warning(
+                                            "Detected unwritable target field in single-record: %s. Stripping...", bf
+                                        )
+                                        self.unwritable_fields.add(bf)
+                                        new_unwritable = True
+
+                        if new_unwritable:
+                            retries -= 1
+                            continue
+
+                        fail += 1
+                        failed_records.append(rec)
+                        break
+                except Exception as exc:
+                    logger.error(
+                        "Single-record update failed: %s", str(exc)[:300]
+                    )
                     fail += 1
                     failed_records.append(rec)
-            except Exception as exc:
-                logger.error(
-                    "Single-record update failed: %s", str(exc)[:300]
-                )
-                fail += 1
-                failed_records.append(rec)
+                    break
             self._report_progress(1, "update")
 
         return ok, fail, failed_records
